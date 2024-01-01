@@ -1,0 +1,415 @@
+@font-face {
+    font-family: 'iAWriter';
+    src: url('/assets/fonts/iAWriterQuattroS-Regular.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}
+@font-face {
+    font-family: 'iAWriter';
+    src: url('/assets/fonts/iAWriterQuattroS-Bold.woff2') format('woff2');
+    font-weight: bold;
+    font-style: normal;
+    font-display: block;
+}
+@font-face {
+    font-family: 'iAWriter';
+    src: url('/assets/fonts/iAWriterQuattroS-Italic.woff2') format('woff2');
+    font-weight: normal;
+    font-style: italic;
+    font-display: block;
+}
+@font-face {
+    font-family: 'iAWriter';
+    src: url('/assets/fonts/iAWriterQuattroS-BoldItalic.woff2') format('woff2');
+    font-weight: bold;
+    font-style: italic;
+    font-display: block;
+}
+@font-face {
+    font-family: 'Fira Code';
+    src: url('/assets/fonts/FiraCode-Regular.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}
+
+
+// variables and theme
+html {
+    @extend [data-theme="light"];
+
+    &[data-theme="light"] {
+        --page-back-color: rgb(240, 240, 240);
+        --main-text-color: rgb(0, 0, 0);
+        --main-back-color: rgb(255, 255, 255);
+        --link-text-color: rgb(232, 111, 136);
+        --other-link-color: rgb(255, 195, 135);
+        --target-highlight-color: rgb(92, 47, 56);
+    }
+
+    &[data-theme="dark"], &:is(html)[data-theme="UA"] {
+        --page-back-color: rgb(70, 70, 70);
+        --main-text-color: rgb(240, 240, 240);
+        --main-back-color: rgb(40, 40, 40);
+        --link-text-color: rgb(232, 111, 136);
+        --other-link-color: rgb(255, 195, 135);
+        --target-highlight-color: rgb(80, 80, 80);
+
+        &[data-theme="UA"] {
+            background-image: linear-gradient(
+                180deg,
+                hsl(211deg,100%,36%) 1%,
+                hsl(242deg,43%,54%) 38%,
+                hsl(270deg,44%,53%) 46%,
+                hsl(295deg,42%,52%) 50%,
+                hsl(316deg,59%,56%) 51%,
+                hsl(328deg,82%,61%) 51%,
+                hsl(338deg,100%,65%) 50%,
+                hsl(347deg,100%,67%) 50%,
+                hsl(0deg,100%,71%) 49%,
+                hsl(15deg,100%,67%) 49%,
+                hsl(27deg,100%,63%) 50%,
+                hsl(37deg,100%,58%) 54%,
+                hsl(46deg,100%,53%) 62%,
+                hsl(52deg,100%,50%) 99%
+            );
+
+            .wrapper {
+                background-color: rgba(17, 17, 17, 0.666);
+            }
+        }
+    }
+
+    // &[data-theme="rainbow"] {
+    //     --page-back-color: rgba(27, 27, 27, 0);
+    //     --main-text-color: rgb(0, 0, 0);
+    //     --main-back-color: rgba(17, 17, 17, 0.22);
+    //     --link-text-color: rgb(125, 0, 255);
+    //     --other-link-color: rgb(255, 76, 31);
+    //     --target-highlight-color: rgb(255, 255, 0);
+    
+    //     background: linear-gradient(124deg, #ff2400, #e81d1d, #e8b71d, #e3e81d, #1de840, #1ddde8, #2b1de8, #dd00f3, #dd00f3);
+    //     background-size: 1800% 1800%;
+    //     // animation by Milan Nohejl
+    //     -webkit-animation: rainbow 13s ease infinite;
+    //     -z-animation: rainbow 13s ease infinite;
+    //     -o-animation: rainbow 13s ease infinite;
+    //     animation: rainbow 13s ease infinite;
+    // }
+}
+
+  
+@-webkit-keyframes rainbow {
+    0%{background-position:0% 82%}
+    50%{background-position:100% 19%}
+    100%{background-position:0% 82%}
+}
+@-moz-keyframes rainbow {
+    0%{background-position:0% 82%}
+    50%{background-position:100% 19%}
+    100%{background-position:0% 82%}
+}
+@-o-keyframes rainbow {
+    0%{background-position:0% 82%}
+    50%{background-position:100% 19%}
+    100%{background-position:0% 82%}
+}
+@keyframes rainbow { 
+    0%{background-position:0% 82%}
+    50%{background-position:100% 19%}
+    100%{background-position:0% 82%}
+}
+
+
+// styling 
+html {
+    color: var(--main-text-color);
+    background-color: var(--page-back-color);
+    font-family: iAWriter, sans-serif;
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-optical-sizing: auto;
+}
+
+
+
+article {
+    hyphens: auto;
+    -ms-hyphens: auto;
+    -moz-hyphens: auto;
+    -webkit-hyphens: auto;
+    text-align: justify;
+
+    // dropped initial cap
+    // > p:first-child::first-letter {
+    //     padding: 0.1rem 0.3rem 0 0;
+    //     margin: 0.3rem 0 0;
+    //     font-family: Fira Code, monospace;
+    //     font-size: 3.5rem;
+    //     line-height: 2.3rem; /* ignored by Firefox, required by others */
+    //     float: left;
+    // }
+}
+
+h1, h2, h3, h4, h5, h6, .post_date {
+    font-family: Fira Code, monospace;
+
+    &:not(h1, .post_date) {
+        margin-top: 3rem; 
+    }
+}
+
+p {
+    margin: 1rem 0;
+}
+
+// fix letter alignment
+.comments *:not(#figfont-captcha) {
+    font-family: iAWriter, sans-serif;
+}
+
+a {
+    color: var(--link-text-color);
+    cursor: pointer;
+}
+
+li {
+    margin: 0.4rem 0;
+}
+
+audio {
+    box-shadow: none;
+    background-color: var(--page-back-color);
+    border-radius: .3em;
+    width: 100%;
+}
+
+.footnotes {
+    font-size: smaller;
+}
+
+.post_date {
+    font-size: 1.3rem;
+    line-height: 1rem;
+    font-weight: bold;
+}
+
+// .katex {
+//     margin-left: 2rem;
+
+//     p & {
+//         margin-left: 0;
+//     }
+// }
+
+*:target {
+    background-color: var(--target-highlight-color);
+    color: var(--main-back-color);
+}
+
+.wrapper {
+    background-color: var(--main-back-color);
+    min-height: calc(100vh - 8rem);
+    max-width: 70ch;
+    margin: 2rem auto;
+    padding: 2rem 2rem;
+}
+
+hr {
+    margin: 2rem 0;
+    text-align: center;
+    border: 0;
+    color: var(--main-text-color);
+    text-transform: uppercase;
+
+    // &:before {
+    //     content: '· • ─────── ༓ ';
+    // }
+    // &:after {
+    //     content: attr(data-content) ' ༓ ─────── • ·';
+    // }
+}
+
+table, th, td {
+    border: thin solid var(--main-text-color);
+    border-collapse: collapse;
+    padding: 0.4rem;
+}
+
+code {
+    color: var(--main-back-color);
+    background-color: var(--main-text-color);
+    padding: 0.15rem;
+}
+
+.p5-canvas {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+#figfont-captcha {
+    font-size: 0.45em;
+    line-height: 1;
+    color: var(--main-text-color);
+}
+
+article.modal {
+    background-color: var(--main-back-color);
+}
+
+div.highlighter-rouge code {
+    display: block;
+    overflow-x: auto;
+    padding: 1rem;
+}
+
+blockquote {
+    font-style: italic;
+    border: thin solid var(--main-text-color);
+    padding: 1rem;
+
+    p {
+        margin: 0;
+    }
+}
+
+.align-right {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.relative-horizon {
+    position: relative;
+
+    .horizon {
+        width: 100%;
+        position: absolute;
+    }
+}
+
+.horizon {
+    width: 20%;
+    height: 1.5em;
+    min-width: max-content;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: justify;
+    -ms-text-justify: distribute-all-lines;
+    text-justify: distribute-all-lines;
+
+    a, div {
+        vertical-align: middle;
+        display: inline-block;
+        *display: inline;
+    }
+
+    img {
+        height: 1.5em;
+    }
+}
+
+.stretch {
+    width: 100%;
+    display: inline-block;
+    font-size: 0;
+    line-height: 0;
+}
+
+img {
+    margin: 0 auto 0;
+    display: block;
+    max-width: 100%;
+}
+
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.5em;
+
+    .square {
+        position: relative;
+
+        img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .caption {
+            opacity: 0;
+            text-align: center;
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            margin: 0;
+            padding: 1rem 0;
+            background: #0009;
+        }
+        
+        &::before {
+            content: "";
+            padding-bottom: 100%;
+            display: block;
+        }
+        
+        &:hover {
+            .caption {
+                opacity: 1;
+            }
+        }
+    }
+}
+
+// use for optional octicons
+// html would be:
+/**
+{% include anchor_headings.html html=content beforeHeading=true anchorBody="<svg class='octicon' viewBox='0 0 16 16' version='1.1' width='16' height='32' aria-hidden='true'><path fill-rule='evenodd' d='M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z'></path></svg>" %}
+**/
+
+.octicon {
+    fill: currentColor;
+    visibility: visible;
+    pointer-events: all;
+    vertical-align: middle;
+    width: 1.2em;
+    height: 1.2em;
+
+    &:hover {
+        visibility: hidden;
+    }
+
+    h1 & {
+        margin-left: -2.4em;
+        margin-right: calc(2.4em - 1.8em);
+    }
+
+    h2 & {
+        margin-left: -2.9em;
+        margin-right: calc(2.9em - 1.8em);
+    }
+
+    h3 & {
+        margin-left: -3.4em;
+        margin-right: calc(3.4em - 1.8em);
+    }
+
+    h4 & {
+        margin-left: -3.9em;
+        margin-right: calc(3.9em - 1.8em);
+    }
+
+    h5 & {
+        margin-left: -4.4em;
+        margin-right: calc(4.4em - 1.8em);
+    }
+
+    h6 & {
+        margin-left: -4.9em;
+        margin-right: calc(4.9em - 1.8em);
+    }
+}

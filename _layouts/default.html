@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: "en" }}">
+   {%- include head.html -%}
+
+   <body>
+      <main class="page-content" aria-label="Content">
+         <div class="wrapper">
+            <div class="horizon" style="width: 100%;">
+               {% if page.layout != 'home' %}
+                  <a href="/">{{ site.theme_config.back_home_text }}</a>
+               {% else %}
+                  <div></div>
+               {% endif %}
+               <div>
+                  <a href="/search" rel="noreferrer">
+                     🔎︎
+                  </a>
+                  <a id="theme-toggle" onclick="modeSwitcher()"></a>
+               </div>
+               <span class="stretch"></span>
+            </div>
+            {{ content }}
+            {% include footer.html %}
+         </div>
+      </main>
+
+      {% if site.goat_counter and jekyll.environment == "production" %}
+         {% include goat_counter.html %}
+      {% endif %}
+   </body>
+</html>

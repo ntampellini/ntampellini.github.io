@@ -1,0 +1,46 @@
+# Welcome to Jekyll!
+#
+# This config file is meant for settings that affect your whole blog, values
+# which you are expected to set up once and rarely edit after that. If you find
+# yourself editing this file very often, consider using Jekyll's data files
+# feature for the data you need to update frequently.
+# Site settings
+# These are used to personalize your new site. If you look in the HTML files,
+# you will see them accessed via {{ site.title }}, {{ site.email }}, and so on.
+# You can create any custom variable you would like, and they will be accessible
+# in the templates via {{ site.myvariable }}.
+
+title: ntampellini
+author: Nicolo' Tampellini
+email: nicolo.tampellini@yale.edu
+description: >-
+  Personal website hosting interactive summaries of computational
+  and synthetic chemistry projects, as well as other portfolio and resources.
+baseurl: ""
+url: "https://ntampellini.xyz"
+twitter_username: ntampellini_
+github_username: ntampellini
+
+# Build settings
+markdown: kramdown
+kramdown:
+  math_engine: mathjax
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+
+sass:
+  style: compressed
+
+theme_config:
+  back_home_text: "⌂"
+  date_format: "%Y-%m-%d"
+  show_description: false
+
+goat_counter: "ntampellini"
+# permalink: /blog/:slug/
+
+favicon: "./favicon.png"
+
+# staticman_url: https://codingbobby-staticman.herokuapp.com/v2/entry/CodingBobby/codingbobby.github.io/master/comments

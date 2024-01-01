@@ -1,0 +1,78 @@
+---
+layout: default
+---
+
+{% assign words = page.content | number_of_words %}
+{% assign time = page.content | number_of_words | divided_by: 170 %}
+{% if time < 1 %}
+  {% assign time = 1 %}
+{% endif %}
+
+{% if page.date %}
+   {% assign title = page.title %}
+{% else %}
+   {% assign title = "" | append: page.title %}
+{% endif %}
+
+<h1>{{ title }}</h1>
+{% if page.date %}
+   <span class="post_date">
+      {{ page.date | date: site.theme_config.date_format }}
+   </span>|
+   {{ time }} {% if time > 1 %} mins{% else %}min{% endif %}
+   {% if page.authors %}|
+      {% for author in page.authors %}
+         <a href="/authors#{{ author }}">
+         {{ author }}</a>{% if forloop.last == false %}, {% endif %}
+      {% endfor %}
+   {% endif %}
+   {% if page.tags %}
+      <br>
+      tags:
+      {% for tag in page.tags %}
+         <a href="/tags#{{ tag }}">
+         {{ tag }}</a>{% if forloop.last == false %}, {% endif %}
+      {% endfor %}
+   {% endif %}
+{% endif %}
+
+<article lang="en">
+{{ content }}
+</article>
+
+{% if site.posts.size > 0 and page.authors %}
+   {% assign post_urls = "" | split: ',' %}
+
+   {% for post in site.posts %}
+      {% assign post_urls = post_urls | push: post.url %}
+
+      {% if post.title == page.title and post.date == page.date %}
+         {% assign post_position = forloop.index %}
+      {% endif %}
+   {% endfor %}
+
+   <div class="horizon" style="width: 100%;">
+      {% if post_position < site.posts.size %}
+         {% assign previous_index = post_position | plus: 0 %}
+         <a href="{{ post_urls[previous_index] | relative_url | replace: ".html", "/" }}">
+            <- previous post
+         </a>
+      {% else %}
+         <div></div>
+      {% endif %}
+
+      {% if post_position > 1 %}
+         {% assign next_index = post_position | minus: 2 %}
+         <a href="{{ post_urls[next_index] | relative_url | replace: ".html", "/" }}">
+            next post ->
+         </a>
+      {% else %}
+         <div></div>
+      {% endif %}
+      <span class="stretch"></span>
+   </div>
+
+   {% if page.comments == true %}
+      {% include comments.html %}
+   {% endif %}
+{% endif %}
