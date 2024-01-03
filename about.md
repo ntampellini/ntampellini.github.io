@@ -31,4 +31,4 @@ This website and all its original contents including text, images, animations an
 ---
 {: data-content="footnotes"}
 
-[^style]: This website style and layout is based on [CodingBobby's website](https://codingbobby.xyz), which is itself based on [Riccardo Graziosi](https://github.com/riggraz)'s theme [no-style-please](https://github.com/riggraz/no-style-please). The website is powered by [Jekyll](https://jekyllrb.com) and hosted via [GitHub pages](https://pages.github.com/).
+[^style]: This website style and layout are based on [CodingBobby's website](https://codingbobby.xyz), which is itself based on [Riccardo Graziosi](https://github.com/riggraz)'s theme [no-style-please](https://github.com/riggraz/no-style-please). The website is powered by [Jekyll](https://jekyllrb.com) and hosted via [GitHub pages](https://pages.github.com/).
