@@ -39,7 +39,7 @@ theme_config:
   show_description: false
 
 goat_counter: "ntampellini"
-# permalink: /blog/:slug/
+permalink: /:slug/
 
 favicon: "./favicon.png"
 
