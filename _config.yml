@@ -10,7 +10,7 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Nicolò Tampellini 
+title: Nicolò Tampellini - Homepage
 author: Nicolò Tampellini
 email: nicolo.tampellini@yale.edu
 description: >-
@@ -36,7 +36,7 @@ sass:
 theme_config:
   back_home_text: "Home"
   date_format: "%Y-%m-%d"
-  show_description: false
+  show_description: true
 
 goat_counter: "ntampellini"
 permalink: /:slug/
