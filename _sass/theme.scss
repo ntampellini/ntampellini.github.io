@@ -46,15 +46,17 @@ html {
         --link-text-color: rgb(232, 111, 136);
         --other-link-color: rgb(255, 195, 135);
         --target-highlight-color: rgb(92, 47, 56);
+        --subtle-color: rgb(175, 175, 175);
     }
 
     &[data-theme="dark"], &:is(html)[data-theme="UA"] {
         --page-back-color: rgb(70, 70, 70);
-        --main-text-color: rgb(240, 240, 240);
+        --main-text-color: rgb(255, 217, 206);
         --main-back-color: rgb(40, 40, 40);
         --link-text-color: rgb(232, 111, 136);
         --other-link-color: rgb(255, 195, 135);
         --target-highlight-color: rgb(80, 80, 80);
+        --subtle-color: rgb(175, 175, 175);
 
         &[data-theme="UA"] {
             background-image: linear-gradient(
@@ -80,53 +82,14 @@ html {
             }
         }
     }
-
-    // &[data-theme="rainbow"] {
-    //     --page-back-color: rgba(27, 27, 27, 0);
-    //     --main-text-color: rgb(0, 0, 0);
-    //     --main-back-color: rgba(17, 17, 17, 0.22);
-    //     --link-text-color: rgb(125, 0, 255);
-    //     --other-link-color: rgb(255, 76, 31);
-    //     --target-highlight-color: rgb(255, 255, 0);
-    
-    //     background: linear-gradient(124deg, #ff2400, #e81d1d, #e8b71d, #e3e81d, #1de840, #1ddde8, #2b1de8, #dd00f3, #dd00f3);
-    //     background-size: 1800% 1800%;
-    //     // animation by Milan Nohejl
-    //     -webkit-animation: rainbow 13s ease infinite;
-    //     -z-animation: rainbow 13s ease infinite;
-    //     -o-animation: rainbow 13s ease infinite;
-    //     animation: rainbow 13s ease infinite;
-    // }
 }
 
   
-@-webkit-keyframes rainbow {
-    0%{background-position:0% 82%}
-    50%{background-position:100% 19%}
-    100%{background-position:0% 82%}
-}
-@-moz-keyframes rainbow {
-    0%{background-position:0% 82%}
-    50%{background-position:100% 19%}
-    100%{background-position:0% 82%}
-}
-@-o-keyframes rainbow {
-    0%{background-position:0% 82%}
-    50%{background-position:100% 19%}
-    100%{background-position:0% 82%}
-}
-@keyframes rainbow { 
-    0%{background-position:0% 82%}
-    50%{background-position:100% 19%}
-    100%{background-position:0% 82%}
-}
-
-
 // styling 
 html {
     color: var(--main-text-color);
     background-color: var(--page-back-color);
-    font-family: iAWriter, sans-serif;
+    font-family: iAWriter, normal;
     font-size: 1rem;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -212,7 +175,7 @@ audio {
 .wrapper {
     background-color: var(--main-back-color);
     min-height: calc(100vh - 8rem);
-    max-width: 70ch;
+    max-width: 80ch;
     margin: 2rem auto;
     padding: 2rem 2rem;
 }
@@ -268,12 +231,17 @@ div.highlighter-rouge code {
 
 blockquote {
     font-style: italic;
-    border: thin solid var(--main-text-color);
-    padding: 1rem;
+    border: thin solid var(--subtle-color);
+    color: var(--subtle-color);
+    border-radius: 5px;
+    border-width: 2.5px;
+    // padding: 1rem;
+    // width: 95%;
+    text-align: center;
 
-    p {
-        margin: 0;
-    }
+    // p {
+    //     margin: 0;
+    // }
 }
 
 .align-right {

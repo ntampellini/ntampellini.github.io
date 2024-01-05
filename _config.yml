@@ -10,8 +10,8 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: ntampellini
-author: Nicolo' Tampellini
+title: Nicolò Tampellini 
+author: Nicolò Tampellini
 email: nicolo.tampellini@yale.edu
 description: >-
   Personal website hosting interactive summaries of computational
@@ -34,7 +34,7 @@ sass:
   style: compressed
 
 theme_config:
-  back_home_text: "⌂"
+  back_home_text: "Home"
   date_format: "%Y-%m-%d"
   show_description: false
 
