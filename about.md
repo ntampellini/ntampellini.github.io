@@ -2,21 +2,29 @@
 layout: post
 title: About
 ---
+<style>
+  .ured {
+    font-style: italic;
+    text-decoration: underline;
+    text-decoration-color: rgba(232, 111, 136, 0.75);
+    text-decoration-thickness: 0.25em;
+    text-decoration-skip-ink: none;
+  }
+</style>
 
-<!-- ![A recent picture of me](https://avatars.githubusercontent.com/u/67119423) -->
 <div>
   <img style='height: 30%; width: 30%; object-fit: contain' src="https://avatars.githubusercontent.com/u/67119423"/>
 </div>
 
-Hi! I am Nicolò Tampellini, a Ph.D. student in synthetic and computational chemistry in the [lab of Prof. Miller](https://millerlab.yale.edu/) (Yale University). I focus on developing asymmetric, catalytic reactions to target pharmaceutically interesting chiral scaffolds. You can find my one-page resume [here](/assets/resume.pdf).
+Hi! I am Nicolò Tampellini, a Ph.D. student in synthetic and computational chemistry in the [lab of Prof. Miller](https://millerlab.yale.edu/) (Yale University). I focus on developing new asymmetric, catalytic methods and chiral catalysts to control selectivity in the formation of interesting chiral scaffolds. You can find my one-page resume [here](/assets/resume.pdf).
 
-This is my personal website[^style] where I will post about my projects and ideas. The main goal is to have a place where I can easily share ideas and interactive visualizations of molecular structures and other dynamic content.
+Welcome to my website[^style]! Here you can find posts about past and current projects and ideas, as well as interactive visualizations of molecular structures and other dynamic content.
 
-Outside of the hood and the terminal, I enjoy rock climbing and playing different musical instruments, much preferably with good friends.
+Outside of the hood and the terminal, I enjoy rock climbing and playing different musical instruments, preferably with good friends.
 
 Thanks for stopping by!
 
-_Nick_
+<div class="ured">Nick</div>
 
 ---
 
