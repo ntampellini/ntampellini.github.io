@@ -11,6 +11,10 @@ entries:
     url: false
     entires: false
 
+  - title: energy converter
+    url: /energy_converter
+    entries: false
+
   - title: about
     url: /about
     entries: false
