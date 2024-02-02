@@ -1,6 +1,11 @@
 // Adapted from CodingBobby's theme
 
 let theme = localStorage.getItem('theme')
+if(theme === null)
+   {
+      theme = 'dark';
+   }
+
 let lightModeHTML = '☀'
 let darkModeHTML = '☾'
 
