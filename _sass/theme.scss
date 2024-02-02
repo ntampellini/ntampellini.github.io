@@ -45,9 +45,9 @@ html {
         --main-back-color: rgb(255, 255, 255);
         --link-text-color: rgb(232, 111, 136);
         --other-link-color: rgb(255, 195, 135);
-        --target-highlight-color: rgba(255, 217, 206, 0.4);
+        --target-highlight-color: rgba(255, 217, 206, 0.3);
         --quote-color: rgb(0, 0, 0);
-        --quote-background: rgba(255, 217, 206, 0.4);
+        --quote-background: rgba(255, 217, 206, 0.3);
     }
 
     &[data-theme="dark"], &:is(html)[data-theme="UA"] {
@@ -58,7 +58,7 @@ html {
         --other-link-color: rgb(255, 195, 135);
         --target-highlight-color: rgb(80, 80, 80);
         --quote-color: rgb(175, 175, 175);
-        --quote-background: rgb(80, 80, 80);
+        --quote-background: rgb(60, 60, 60);
 
         &[data-theme="UA"] {
             background-image: linear-gradient(
@@ -204,9 +204,10 @@ table, th, td {
 }
 
 code {
-    color: var(--main-back-color);
-    background-color: var(--main-text-color);
+    color: var(--main-text-color);
+    background-color: var(--quote-background);
     padding: 0.15rem;
+    font-family: Fira Code, monospace;
 }
 
 .p5-canvas {

@@ -15,6 +15,10 @@ entries:
     url: /energy_converter
     entries: false
 
+  - title: scripts
+    url: /scripts
+    entries: false
+
   - title: about
     url: /about
     entries: false
