@@ -20,13 +20,13 @@ import sys
 
 if len(sys.argv) == 1:
     print(f"\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
-           "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge]\n\n" + 
-           "  filename*.xyz: base name of input geometry file(s)\n" +
-           "  newfile: optional, creates a new file, preserving the original\n" +
-           "  ff: optional, use GFN-FF instead of GFN2-XTB\n" +
-           "  sp: optional, do not optimize but just run a single point energy calculation\n" +
-           "  c: optional, specify one or more distance/dihedral constraints to be imposed\n" +
-           "  charge: optional, specify the charge to be passed to XTB\n"
+           "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge=n]\n\n" + 
+           "  filename*.xyz: Base name of input geometry file(s)\n" +
+           "  newfile: Optional, creates a new file, preserving the original\n" +
+           "  ff: Optional, use GFN-FF instead of GFN2-XTB\n" +
+           "  sp: Optional, do not optimize but just run a single point energy calculation\n" +
+           "  c: Optional, specify one or more distance/dihedral constraints to be imposed\n" +
+           "  charge=n: Optional, where \"n\" is an integer. Specify the charge to be passed to XTB\n"
            )
     quit()
 

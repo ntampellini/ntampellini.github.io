@@ -3,7 +3,7 @@ layout: post
 title: Scripts
 ---
 <style> .myButton {
-	background-color:#ffd9ce;
+  background-color:#ffd9ce;
 	border-radius:17px;
 	display:inline-block;
 	cursor: pointer;
@@ -21,14 +21,26 @@ title: Scripts
 	top:1px;
 } </style>
 
-Here are some Python and Bash scripts that I routinely use and share, divided by use case. In most cases, running these "dry" (with no arguments) prints the usage text you can see here. Click on the pink button to download a script.
+Here are some Python and Bash scripts that I routinely use and share, divided by use case. In most cases, running these "dry" (with no arguments) prints the usage text you can see here. Click on the button to download a script.
 
 # ORCA/XTB
+
+<a href="/assets/scripts/utils.py" class="myButton"
+   title="Download script file">utils.py</a>
+
+Small library of Python functions required by some of these scripts.
+
+<br>
 
 <a href="/assets/scripts/orcasub.sh" class="myButton"
    title="Download script file">orcasub.sh</a>
 
-Slurm batch script to run ORCA calculations with the latest setup for Grace, Yale's HPC cluster.
+    Slurm batch script to run ORCA calculations with the latest setup for
+    Grace, Yale's HPC cluster. Usage: 
+
+      orcasub.sh input[.inp/.xyz] [n_cores]
+
+    If ncores is not specified, it is tentatively extracted from input.inp
 
 <br>
 
@@ -116,7 +128,19 @@ Slurm batch script to run ORCA calculations with the latest setup for Grace, Yal
        
 <br>
 
-<a href="/assets/scripts/utils.py" class="myButton"
-   title="Download script file">utils.py</a>
+<a href="/assets/scripts/xtbopt.py" class="myButton"
+   title="Download script file">xtbopt.py</a>
 
-Small library of Python functions required by some of these scripts.
+    Optimizes the specified geometry/ies, compares results and replaces
+    the input file. Syntax:
+
+      python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge=n]
+    
+    filename*.xyz: Base name of input geometry file(s)
+    newfile: Optional, creates a new file, preserving the original
+    ff: Optional, use GFN-FF instead of GFN2-XTB
+    sp: Optional, run a single point energy calculation
+    c: Optional, specify one or more distance/dihedral constraints
+    charge=n: Optional, where "n" is an integer. Specify the total charge
+
+<br>
