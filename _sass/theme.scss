@@ -37,7 +37,7 @@
 
 // variables and theme
 html {
-    @extend [data-theme="light"];
+    // @extend [data-theme="light"];
 
     &[data-theme="light"] {
         --page-back-color: rgb(240, 240, 240);
@@ -47,10 +47,10 @@ html {
         --other-link-color: rgb(255, 195, 135);
         --target-highlight-color: rgba(255, 217, 206, 0.3);
         --quote-color: rgb(0, 0, 0);
-        --quote-background: rgba(255, 217, 206, 0.3);
+        --quote-background: rgba(255, 217, 206, 0.4);
     }
 
-    &[data-theme="dark"], &:is(html)[data-theme="UA"] {
+    &[data-theme="dark"] {
         --page-back-color: rgb(70, 70, 70);
         --main-text-color: rgb(255, 217, 206);
         --main-back-color: rgb(40, 40, 40);
@@ -59,33 +59,13 @@ html {
         --target-highlight-color: rgb(80, 80, 80);
         --quote-color: rgb(175, 175, 175);
         --quote-background: rgb(60, 60, 60);
-
-        &[data-theme="UA"] {
-            background-image: linear-gradient(
-                180deg,
-                hsl(211deg,100%,36%) 1%,
-                hsl(242deg,43%,54%) 38%,
-                hsl(270deg,44%,53%) 46%,
-                hsl(295deg,42%,52%) 50%,
-                hsl(316deg,59%,56%) 51%,
-                hsl(328deg,82%,61%) 51%,
-                hsl(338deg,100%,65%) 50%,
-                hsl(347deg,100%,67%) 50%,
-                hsl(0deg,100%,71%) 49%,
-                hsl(15deg,100%,67%) 49%,
-                hsl(27deg,100%,63%) 50%,
-                hsl(37deg,100%,58%) 54%,
-                hsl(46deg,100%,53%) 62%,
-                hsl(52deg,100%,50%) 99%
-            );
-
-            .wrapper {
-                background-color: rgba(17, 17, 17, 0.666);
-            }
+    
+        .wrapper {
+            background-color: rgba(17, 17, 17, 0.666);
         }
     }
-}
 
+}
   
 // styling 
 html {
@@ -230,6 +210,19 @@ div.highlighter-rouge code {
     display: block;
     overflow-x: auto;
     padding: 1rem;
+}
+
+textarea {
+    color: var(--main-text-color);
+    background-color: var(--quote-background);
+    width: 75vh;
+    max-width: 75vh;
+    min-width: 75vh;
+    height: 30vh;
+    padding: 0.25rem;
+    font-family: Fira Code, monospace;
+    border-width: 3px;
+    text-align: center;
 }
 
 blockquote {
@@ -387,3 +380,76 @@ img {
         margin-right: calc(4.9em - 1.8em);
     }
 }
+
+// Checkbox container
+
+.container {
+    // display: block;
+    justify-content: center;
+    position: relative;
+    padding-left: 35px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    color: var(--main-text-color);
+    background-color: rgba(0, 0, 0, 0);
+  }
+  
+  /* Hide the browser's default checkbox */
+  .container input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+  }
+  
+  /* Create a custom checkbox */
+  .checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 25px;
+    width: 25px;
+    background-color: var(--page-back-color);
+  }
+  
+  /* On mouse-over, add a grey background color */
+  .container:hover input ~ .checkmark {
+    background-color:var(--quote-background);
+  }
+  
+  /* When the checkbox is checked, add a blue background */
+  .container input:checked ~ .checkmark {
+    background-color: var(--quote-background);
+  }
+  
+  /* Create the checkmark/indicator (hidden when not checked) */
+  .checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+    color: var(--main-back-color);
+  }
+  
+  /* Show the checkmark when checked */
+  .container input:checked ~ .checkmark:after {
+    display: block;
+  }
+  
+  /* Style the checkmark/indicator */
+  .container .checkmark:after {
+    left: 9px;
+    top: 5px;
+    width: 5px;
+    height: 10px;
+    border: solid var(--main-text-color);
+    border-width: 0 3px 3px 0;
+    -webkit-transform: rotate(45deg);
+    -ms-transform: rotate(45deg);
+    transform: rotate(45deg);
+  }

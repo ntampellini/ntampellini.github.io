@@ -7,3 +7,4 @@ vendor
 .vscode
 obsidian.css
 .obsidian
+*.ipynb

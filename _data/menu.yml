@@ -19,6 +19,10 @@ entries:
     url: /scripts
     entries: false
 
+  - title: haiku
+    url: /haiku
+    entries: false
+
   - title: about
     url: /about
     entries: false
