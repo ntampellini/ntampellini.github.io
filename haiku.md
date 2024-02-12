@@ -29,6 +29,19 @@ title: Haiku Extractor
         padding-bottom: 2vh;
     }
 
+    textarea {
+        color: var(--main-text-color);
+        background-color: var(--quote-background);
+        max-width: min(70ch, 80vw);
+        min-width: min(70ch, 80vw);
+        width: min(70ch, 80vw);
+        height: 15vw;
+        padding: 0.25rem;
+        font-family: Fira Code, monospace;
+        border-width: 3px;
+        text-align: center;
+    }
+
     .haiku {
         text-align: center;
         font-size: 2rem;

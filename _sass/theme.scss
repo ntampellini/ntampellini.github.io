@@ -212,19 +212,6 @@ div.highlighter-rouge code {
     padding: 1rem;
 }
 
-textarea {
-    color: var(--main-text-color);
-    background-color: var(--quote-background);
-    width: 75vh;
-    max-width: 75vh;
-    min-width: 75vh;
-    height: 30vh;
-    padding: 0.25rem;
-    font-family: Fira Code, monospace;
-    border-width: 3px;
-    text-align: center;
-}
-
 blockquote {
     font-style: italic;
     border-left: 10px solid var(--quote-color);
