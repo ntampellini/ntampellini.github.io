@@ -8,6 +8,10 @@ options = {
                ],
     "solvent" : "ch2cl2",
     "charge" : 0,
+
+    # specifies an atomic index to be forced planar
+    "planar" : None,
+    "constrain_string" : None,
 }
 ####################################################
 
@@ -99,6 +103,11 @@ if "charge" in [kw.split("=")[0] for kw in sys.argv]:
     options["charge"] = next((kw.split("=")[-1] for kw in sys.argv if "charge" in kw))
     sys.argv.remove(f"charge={options['charge']}")
 
+if "planar" in sys.argv:
+    sys.argv.remove(f"planar")
+    options["constrain_string"] = "dihedral: 7, 8, 9, 15, 180\ndihedral: 9, 8, 15, 7, 180\ndihedral: 15, 8, 7, 9, 180\n force constant=1.0"
+    print("--> !PLANAR")
+
 for option, value in options.items():
     print(f"--> {option} = {value}")
 
@@ -135,7 +144,16 @@ for i, name in enumerate(names):
         action = "Optimizing" if options["opt"] else "Calculating SP energy on"
         for method in options["method"]:
             print(f'{action} {name} - {i+1} of {len(names)}, conf {c+1} of {len(data.atomcoords)} ({method})')
-            coords, energy, success = xtb_opt(coords, data.atomnos, constrained_indices=constraints, constrained_distances=distances, method=method, solvent=options["solvent"], charge=options["charge"], opt=options["opt"])
+            coords, energy, success = xtb_opt(coords,
+                                              data.atomnos,
+                                              constrained_indices=constraints,
+                                              constrained_distances=distances,
+                                              constrain_string=options["constrain_string"],
+                                              method=method,
+                                              solvent=options["solvent"],
+                                              charge=options["charge"],
+                                              opt=options["opt"],
+                                            )
 
             if options["opt"]:
                 with open(outname, write_type) as f:

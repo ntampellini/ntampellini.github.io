@@ -73,11 +73,9 @@ module purge
 module load xtb/6.5.1-foss-2020b ORCA/5.0.4-gompi-2020b
 module list
 
-orcadir=/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/bin/
-
 export RSH_COMMAND="/usr/bin/ssh -x"
-export LD_LIBRARY_PATH=/vast/palmer/apps/avx2/software/GCCcore/10.2.0/lib64/:/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/lib/:$orcadir
+export LD_LIBRARY_PATH=/vast/palmer/apps/avx2/software/GCCcore/10.2.0/lib64/:/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/lib/:/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/bin/
 
-$orcadir/orca "${basename}.inp" > "${basename}.out"
+/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/bin/orca "${basename}.inp" > "${basename}.out"
 
 EOT

@@ -10,8 +10,12 @@ if len(sys.argv) == 1:
           "n: optional, overrides the default value of 16 for cores\n")
     quit()
 
-if int(sys.argv[-1]) in (1, 2, 4, 8, 16, 32, 64):
-    *sys.argv, procs = sys.argv
+try:
+    if int(sys.argv[-1]) in (1, 2, 4, 8, 16, 32, 64):
+        *sys.argv, procs = sys.argv
+        
+except ValueError:
+    pass
 
 print(f'--> Running jobs on {procs} cores each')
 

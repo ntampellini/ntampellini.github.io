@@ -8,7 +8,7 @@ options = {
     "freq" : False,
     "temp" : 273.15+25,
     "procs" : 16,
-    "mem" : 4, # Memory per core, in GB
+    "mem" : 6, # Memory per core, in GB
     "charge" : 0,
     "maxstep" : 0.05, # in Bohr atomic units (1au = 0.529177 A)
     "popt" : False,
@@ -23,6 +23,10 @@ epsilon = {
      "phcf3" : 9.18,
      "dmso" : 47.2,
 }
+
+# round temperature so it looks prettier
+options["temp"] = round(options["temp"], 2)
+
 ####################################################
 
 import os 
@@ -131,7 +135,6 @@ for filename in sys.argv[1:]:
 
     with open(f'{rootname}.inp', 'w') as f:
         s = f'''! {options["level"]} {options["basis_set"]} CPCM {options["opt"]}
-
 ! {options["additional_kw"]}
 
 %pal
@@ -142,8 +145,7 @@ end
 
 %geom
   MaxStep {options["maxstep"]}
-  {"Calc_Hess true" if options["ts"] else ""}
-end
+  {"Calc_Hess true\n" if options["ts"] else ""}end
 
 %cpcm
   epsilon {epsilon[options["solvent"]]}
