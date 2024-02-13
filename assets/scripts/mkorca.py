@@ -72,7 +72,7 @@ if "ts" in sys.argv:
     sys.argv.remove("ts")
     options["ts"] = True
     options["opt"] = "OptTS"
-    options["procs"] = 32
+    options["procs"] = 16
     options["freq"] = True
     options["additional_kw"] += " TightOpt LARGEPRINT"
 
@@ -80,7 +80,7 @@ if "optf" in sys.argv:
     sys.argv.remove("optf")
     options["ts"] = False
     options["opt"] = "Opt"
-    options["procs"] = 32
+    options["procs"] = 16
     options["freq"] = True
     options["additional_kw"] += " TightOpt LARGEPRINT"
 
@@ -145,7 +145,8 @@ end
 
 %geom
   MaxStep {options["maxstep"]}
-  {"Calc_Hess true\n" if options["ts"] else ""}end
+  {"Calc_Hess true" if options["ts"] else ""}
+end
 
 %cpcm
   epsilon {epsilon[options["solvent"]]}
