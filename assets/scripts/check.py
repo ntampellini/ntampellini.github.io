@@ -11,6 +11,7 @@ plt.theme("pro")
 plt.plotsize(100,25)
 plot_distance = False
 scan = False
+neb = False
 indices = None
 zoom = False
 
@@ -22,6 +23,12 @@ if len(sys.argv) == 1:
            "  i1/i2: optional, plot i1-i2 distance during optimization steps\n" +
            "  zoom: optional, only shows plot of last 20 iterations.\n")
     quit()
+
+# move to target directory and get basename
+remote_dir = os.path.dirname(sys.argv[1])
+if remote_dir != "":
+    os.chdir(remote_dir)
+    sys.argv[1] = os.path.basename(sys.argv[1])
 
 if "zoom" in sys.argv:
     sys.argv.remove("zoom")
@@ -39,12 +46,14 @@ files = os.listdir()
 if inpname in files:
     with open(inpname, "r") as f:
         while True:
+
             line = f.readline()
             if not line:
                 break
-            if "Scan" in line:
+
+            if "SCAN" in line.upper():
                 scan = True
-                frags = f.readline().split()
+                frags = f.readline().upper().split()
 
                 if frags[0] == "B":
                     scantype = "distance"
@@ -53,6 +62,12 @@ if inpname in files:
                 elif frags[0] == "D":
                     scantype = "dihedral"
                     scan_indices = tuple([int(i) for i in frags[1:5]])
+
+                else:
+                    scan = False
+
+            if "NEB" in line.upper():
+                neb = True
 
 filename = rootname + "_trj.xyz"
 
@@ -81,20 +96,33 @@ propname = f"{rootname}_property.txt"
 
 if propname in files:
     
-    with open(propname, 'r') as f:
-        energies = []
-        while True:
-            line = f.readline()
-            if "Total DFT Energy" in line:
-                energies.append(float(line.split()[6]))
+    if not neb:
+        with open(propname, 'r') as f:
+            energies = []
+            while True:
+                line = f.readline()
+                if "Total DFT Energy" in line:
+                    energies.append(float(line.split()[6]))
 
-            if not line:
-                break
-    
+                if not line:
+                    break
+
+    else:
+        energies = []
+        lines = getoutput(f"grep \"Starting iterations:\" {rootname}.out -A 500 ").splitlines()
+        # energies = [float(line.split()[3]) for line in lines[4:]]
+        for line in lines[4:]:
+            try:
+                assert line.split()[0] != "Convergence"
+                energies.append(float(line.split()[3]))
+
+            except (IndexError, ValueError, AssertionError):
+                continue
+   
     if len(energies) > 0:
         last_E = energies[-1]
         energies = np.array(energies)
-        energies -= np.min(energies)
+        energies -= np.min(energies) if not neb else 0
         energies *= 627.5096080305927
         x = np.arange(1,len(energies)+1)
         
@@ -103,9 +131,9 @@ if propname in files:
             x = x[-20:]
 
         plt.cld()
-        plt.plot(x, energies, color=215)
+        plt.plot(x, energies, color=(215 if not neb else 37))
         plt.xlabel("Iteration #")
-        plt.ylabel(f"Energy (kcal/mol)")
+        plt.ylabel(f"Energy (kcal/mol)" if not neb else "ΔEE‡ TS(kcal/mol)")
         plt.show()
         print("\n")
         os.system(f"grep HURRAY {rootname}.out | tail -1")
@@ -125,15 +153,19 @@ if propname in files:
 
             print(f"\nLast optimized step is {int(last_geom)}/{total}")
 
-        homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
-        lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
+        if neb:
+            os.system(f"grep \"Starting iterations:\" {rootname}.out -A 500 ")
+
+        else:
+            homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
+            lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
+            
+            # if homo == "" and lumo == "":
+            #     homo = getoutput(f"egrep \"^ *[0-9]* +1.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
         
-        # if homo == "" and lumo == "":
-        #     homo = getoutput(f"egrep \"^ *[0-9]* +1.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
-        
-        print(f"\nHOMO: {homo} eV")
-        print(f"LUMO: {lumo} eV")
-        print("\n"+"_"*100+"\n")
+            print(f"\nHOMO: {homo} eV")
+            print(f"LUMO: {lumo} eV")
+            print("\n"+"_"*100+"\n")
 
         os.system(f"grep \"TOTAL RUN TIME\" {rootname}.out | tail -1")
 

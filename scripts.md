@@ -38,9 +38,30 @@ Small library of Python functions required by some of these scripts.
     Slurm batch script to run ORCA calculations with the latest setup for
     Grace, Yale's HPC cluster. Usage: 
 
-      orcasub.sh input[.inp/.xyz] [n_cores]
+      orcasub.sh basename[.inp/.xyz] [n_cores]
 
-    If ncores is not specified, it is tentatively extracted from input.inp
+    If ncores is not specified, it is tentatively extracted from basename.inp
+
+<br>
+
+<a href="/assets/scripts/orcasub_scratch.sh" class="myButton"
+   title="Download script file">orcasub_scratch.sh</a>
+
+    Slurm batch script to run ORCA calculations with the latest setup for
+    Grace, Yale's HPC cluster, storing temporary files in a scratch folder.
+    Usage: 
+
+      orcasub.sh basename[.inp/.xyz]
+
+<br>
+
+<a href="/assets/scripts/orcasub_batch.sh" class="myButton"
+   title="Download script file">orcasub_batch.sh</a>
+
+    Python script to run a series of ORCA calculations via
+    orcasub_scratch.sh. Usage: 
+
+      python orcasub_batch.py basename[.inp/.xyz]
 
 <br>
 
@@ -78,17 +99,6 @@ Small library of Python functions required by some of these scripts.
 
 <br>
 
-<a href="/assets/scripts/orcasub_batch.py" class="myButton"
-   title="Download script file">orcasub_batch.py</a>
-
-    Launch batches of ORCA jobs through orcasub.sh. Syntax:
-
-      python orcasub_batch.py conf*.xyz [n]
-
-    n: optional, overrides the default value of 16 for cores
-
-<br>
-
 <a href="/assets/scripts/check.py" class="myButton"
    title="Download script file">check.py</a>
 
@@ -109,10 +119,13 @@ Small library of Python functions required by some of these scripts.
     Compare completed ORCA jobs electronic/free energy of groups of jobs and
     prints collected energy values. Syntax:
 
-      python compare.py conf*.out [g] 
-
+      python compare.py conf*.out [g] [x=folder/file.xyz]
+           
     conf*.out: base name of output file(s)
     g: optional, uses free energy for the comparison (needs freq calculations)
+    x: extract conformers from the specified files, removing duplicates
+       (similarity pruning via TSCoDe) and high-energy conformers
+       (5 kcal/mol threshold)
 
 <br>
 

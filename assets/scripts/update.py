@@ -11,7 +11,7 @@ if len(sys.argv) == 1:
            )
     quit()
 
-for name in sys.argv[1:]:
+def update(name):
 
     traj = name.split(".")[0] + "_trj.xyz"
     inp = name.split(".")[0] + ".xyz"
@@ -32,3 +32,6 @@ for name in sys.argv[1:]:
         else:
 
             f"Can't find {traj}"
+
+for name in sys.argv[1:]:
+    update(name)
