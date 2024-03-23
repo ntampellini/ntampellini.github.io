@@ -1,13 +1,13 @@
 ---
 layout: post
-title: "Atroposelective Imidation [ChemRXiv]"
+title: "Catalyst Conformational Activation: Atroposelective Imidation of Quinazolinediones"
 tags: [interactive, computational_chemistry, publication]
 ---
 
 <!-- Twitter -->
 <meta property="twitter:card" content="summary_large_image" />
 <meta property="twitter:url" content="https://ntampellini.github.io/atroposelective-imidation/" />
-<meta property="twitter:title" content="Atroposelective Imidation [ChemRXiv]" />
+<meta property="twitter:title" content="Catalyst Conformational Activation: Atroposelective Imidation of Quinazolinediones" />
 <meta property="twitter:description" content="Test description" />
 <meta property="twitter:image" content="/assets/atroposelective_imidation/TS1Sa_preview.png" />
 
@@ -61,7 +61,7 @@ tags: [interactive, computational_chemistry, publication]
 
 <!-- CONTENT -->
 
-> This post summarizes and adds interactive visualizations on the development of a novel superbasic peptidyl guanidine catalyst able to affect the atroposelective imidation of quinazolinediones. The manuscript is currently in review and can be found on ChemRXiv.[^chemrxiv]
+> This post summarizes and adds interactive visualizations on the development of a novel superbasic peptidyl guanidine catalyst able to affect the atroposelective imidation of quinazolinediones. The full paper, previously on ChemRXiv[^chemrxiv] is now published in Chemistry, a European Journal.[^ChemEurJ]
 
 Over the last ten years, we surely have become more used to seeing drug molecules featuring elements of axial chirality. Still, if a chiral axis is not something that turns heads anymore, a drug molecule featuring _two_ is sure to be a different story. Particularly if both these elements are precisely controlled during the process route and the drug is developed as a single, stable stereoisomer. This is the case for BMS-986142, an investigational BTK (Bruton's Tyrosine Kinase) inhibitor from Bristol Myers Squibb.[^BMSBTK]
 
@@ -170,3 +170,4 @@ All the structures in this post can be found in the [GitHub repository](https://
 
 [^chemrxiv]: The preprint of this work can be found on [ChemRXiv](https://chemrxiv.org/engage/chemrxiv/article-details/658102309138d231610176ba).
 
+[^ChemEurJ]: The full paper can be found online on [Chemistry, a European Journal](https://chemistry-europe.onlinelibrary.wiley.com/doi/10.1002/chem.202401109).
