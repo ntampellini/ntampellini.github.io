@@ -33,5 +33,9 @@ def update(name):
 
             f"Can't find {traj}"
 
-for name in sys.argv[1:]:
-    update(name)
+if __name__ == "__main__":
+
+    for name in sys.argv[1:]:
+        update(name)
+        
+    print(f"Updated {len(done)} structures.")

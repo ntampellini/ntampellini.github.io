@@ -13,7 +13,38 @@ for pt_n in range(5):
         continue
     break
 
-    
+def cycle_to_dihedrals(cycle):
+    '''
+    '''
+    dihedrals = []
+    for i in range(len(cycle)):
+
+        a = cycle[i % len(cycle)]
+        b = cycle[(i+1) % len(cycle)]
+        c = cycle[(i+2) % len(cycle)]
+        d = cycle[(i+3) % len(cycle)]
+        dihedrals.append([a, b, c, d])
+    return dihedrals
+
+def get_exocyclic_dihedrals(graph, cycle):
+    '''
+    '''
+    exo_dihs = []
+    for index in cycle:
+        for exo_id in neighbors(graph, index):
+            if exo_id not in cycle:
+                dummy1 = next(i for i in cycle if i not in (exo_id, index) and i in neighbors(graph, index))
+                dummy2 = next(i for i in cycle if i not in (exo_id, index, dummy1) and i in neighbors(graph, dummy1))
+                exo_dihs.append([exo_id, index, dummy1, dummy2])
+
+    return exo_dihs 
+
+def neighbors(graph, index):
+    # neighbors = list([(a, b) for a, b in graph.adjacency()][index][1].keys())
+    neighbors = list(graph.neighbors(index))
+    if index in neighbors:
+        neighbors.remove(index)
+    return neighbors
 
 def dihedral(p):
     '''

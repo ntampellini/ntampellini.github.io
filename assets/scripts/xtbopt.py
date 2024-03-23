@@ -43,6 +43,29 @@ constraints, distances = [], []
 newfile = False
 free_energy = False
 
+if "flat" in sys.argv:
+    sys.argv.remove("flat")
+    assert len(sys.argv) == 2, "Single molecule only!"
+
+    from tscode.utils import graphize
+    from networkx import cycle_basis
+    from utils import cycle_to_dihedrals, get_exocyclic_dihedrals
+
+    mol = read_xyz(sys.argv[1])
+    graph = graphize(mol.atomcoords[0], mol.atomnos)
+
+    cycles = [l for l in cycle_basis(graph) if len(l) in (7, 8, 9)]
+    assert len(cycles) == 1, "Only 7/8/9-membered ring flips at the moment"
+
+    dihedrals = cycle_to_dihedrals(cycles[0])
+    exocyclic = get_exocyclic_dihedrals(graph, cycles[0])
+    target_angles = np.array([0 for _ in dihedrals] + [180 for _ in exocyclic])
+
+    for (a, b, c, d), target in zip((dihedrals + exocyclic), target_angles):
+        constraints.append([a, b, c, d, target])
+
+    print(f"--> flat: Found {len(cycles[0])}-membered ring")
+
 if "c" in sys.argv:
     sys.argv.remove("c")
 

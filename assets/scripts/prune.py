@@ -6,7 +6,8 @@ from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.torsion_module import prune_conformers_rmsd_rot_corr
 from tscode.optimization_methods import prune_by_moment_of_inertia, prune_conformers_rmsd
 
-def cl_similarity_refining(coords, atomnos, graph, moi=True, rmsd=True, rmsd_thr=0.5, verbose=False):
+def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_thr=0.25, verbose=False):
+    
         '''
         Removes structures that are too similar to each other (RMSD-based).
 

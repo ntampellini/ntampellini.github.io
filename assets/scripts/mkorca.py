@@ -12,6 +12,7 @@ options = {
     "charge" : 0,
     "maxstep" : 0.05, # in Bohr atomic units (1au = 0.529177 A)
     "popt" : False,
+    "compound" : False,
 
     "additional_kw" : "Defgrid3",
     "extra_block" : "",
@@ -46,6 +47,53 @@ if len(sys.argv) == 1:
            "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
            )
     quit()
+
+def get_comp_script_inp(rootname):
+    return f'''* xyzfile 0 1 {rootname}.xyz
+    
+%pal
+ nprocs {options["procs"]}
+end
+
+%maxcore {options["mem"]*1024}
+
+%geom
+  MaxStep {options["maxstep"]}
+end
+
+%compound "optf+sp.cmp"
+  with
+    solvent = "{options["solvent"]}";
+end
+
+'''
+
+def get_inp(rootname):
+    return f'''! {options["level"]} {options["basis_set"]} CPCM {options["opt"]}
+! {options["additional_kw"]}
+
+%pal
+  nprocs {options["procs"]}
+end
+
+%maxcore {options["mem"]*1024}
+
+%geom
+  MaxStep {options["maxstep"]}
+  {"Calc_Hess true" if options["ts"] else ""}
+end
+
+%cpcm
+  epsilon {epsilon[options["solvent"]]}
+end
+
+{f"%freq temp {options['temp']} end" if options["freq"] else ""}
+
+{options["extra_block"]}
+
+* xyzfile {options["charge"]} 1 {rootname}.xyz
+
+'''
 
 os.chdir(os.getcwd())
 names = []
@@ -107,11 +155,13 @@ if "nmr" in sys.argv:
     options["basis_set"] = '6-311+G(2d,p)'
     options["additional_kw"] += " NMR"
 
-irc = False
+if "comp" in sys.argv:
+    options["compound"] = True
+    options["procs"] = 8
 
 if "irc" in sys.argv:
     sys.argv.remove("irc")
-    irc = True
+    options["irc"] = True
     options["ts"] = False
     options["freq"] = True
     options["procs"] = 32
@@ -130,37 +180,18 @@ for option, value in options.items():
 for filename in sys.argv[1:]:
     rootname = filename.split('.')[0]
 
-        # if irc:
+    if options["compound"]:
+        s = get_comp_script_inp(rootname)
+
+    else:
+        s = get_inp(rootname)
+
+        # if options["irc"]:
         #     options["extra_block"] = "%irc\n  InitHess read\n  Hess_Filename \"{0}.hess\"\nend\n".format(rootname)
 
     with open(f'{rootname}.inp', 'w') as f:
-        s = f'''! {options["level"]} {options["basis_set"]} CPCM {options["opt"]}
-! {options["additional_kw"]}
-
-%pal
-  nprocs {options["procs"]}
-end
-
-%maxcore {options["mem"]*1024}
-
-%geom
-  MaxStep {options["maxstep"]}
-  {"Calc_Hess true" if options["ts"] else ""}
-end
-
-%cpcm
-  epsilon {epsilon[options["solvent"]]}
-end
-
-{f"%freq temp {options['temp']} end" if options["freq"] else ""}
-
-{options["extra_block"]}
-
-* xyzfile {options["charge"]} 1 {rootname}.xyz
-
-'''
-
         f.write(s)
+
     print(f'Written orca input file {rootname}.inp')
 
     # Convert all text files to Linux format

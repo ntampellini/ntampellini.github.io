@@ -248,3 +248,6 @@ if scanname in files:
         print(f"Extracted scan maximum ({units[0]} = {round(distances[maximum_id], 3)} {units[1]}) to {rootname}_scan_max.xyz")
         print(f"Barrier height is {round(np.max(energies)-np.min(energies), 2)} kcal/mol")
         print("\n")
+
+    else:
+        print(f"No {filename} found in the current folder.")
