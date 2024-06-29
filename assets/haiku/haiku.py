@@ -1,6 +1,88 @@
-import numpy as np
+import random
 import re
-from pyscript import document
+
+import numpy as np
+from bs4 import BeautifulSoup
+import pyscript as ps
+from js import window
+# import json
+from time import perf_counter
+
+# Set up a CORS proxy URL
+cors_proxy_url = "https://corsproxy.io/?"
+# cors_proxy_url = "http://api.allorigins.win/get?url="
+
+async def get_random_chemrxiv_paper():
+
+    # Send request to ChemRXiv Organic Chemisty website
+    url = "https://chemrxiv.org/engage/chemrxiv/category-dashboard/605c72ef153207001f6470d1"
+
+    # Send request to ChemRXiv website via CORS proxy
+    print('--> Sending ChemRXiv page request')
+    start = perf_counter()
+
+    response = await window.fetch(f"{cors_proxy_url}{url}")
+    string = await response.text()
+
+    print(f'--> main page loaded ({perf_counter()-start:.1f} s)')
+    print(string[0:100])
+
+    # content = json.loads(string)["contents"]
+    content = string
+    # with open('main_page.html', 'w') as f:
+    #     f.write(html)
+
+    # Parse HTML content using BeautifulSoup
+    soup = BeautifulSoup(content, 'html.parser')
+    # soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Find all article links on the page
+    article_links = soup.find_all('a', class_='ArticleSummary')
+
+    if not article_links:
+        return "title", "authors", "abstract"
+
+    # Select a random article link
+    random_article_link = random.choice(article_links)
+
+    # Send request to the random article page
+    article_url = random_article_link['href']
+
+    print(f'--> Sending ChemRXiv paper page request ({cors_proxy_url}https://chemrxiv.org/{article_url})')
+    time = perf_counter()
+
+    # article_response = requests.get(f"{cors_proxy_url}https://chemrxiv.org/"+article_url)
+    article_response = await window.fetch(f"{cors_proxy_url}https://chemrxiv.org/"+article_url)
+    article_string = await article_response.text()
+    # article_content = json.loads(article_string)["contents"]
+    article_content = article_string
+
+    print(f'--> article page loaded ({perf_counter()-start:.1f} s)')
+
+    # with open('article_page.html', 'w') as f:
+        # f.write(article_response.text)
+
+    # Parse HTML content of the article page
+    article_soup = BeautifulSoup(article_content, 'html.parser')
+
+    # Extract title
+    title = article_soup.title.text.split('|')[0].rstrip()
+    print("--> title is:", title)
+
+    authors = article_soup.select('#main-content > div > div > div.row.LayoutGutters.mx-0.align-center.justify-center.mb-5 > ' +
+                                'div > div > div.col-md-8.col-12 > div.article-header > div:nth-child(1) > div:nth-child(2) > ' +
+                                'div > div.mt-2.col > ul')[0].text.rstrip()
+    # correct for wrong positioning of comma
+    authors = authors.replace(' ,', ', ')
+
+    # replace last comma with 'and', unless single author
+    authors = ", ".join(authors.split(", ")[:-1]) + ' and ' + authors.split(", ")[-1] if "," in authors else authors
+
+    # get abstract in a text format
+    abstract = article_soup.find('div', class_='abstract').text.strip()
+
+    # return the extracted information
+    return title, authors, abstract
 
 # masterpiece single liner to count syllables from 200_success
 # https://codereview.stackexchange.com/questions/224177/python-function-to-count-syllables-in-a-word
@@ -67,7 +149,13 @@ def get_haiku(string, contiguous=True, maxiter=5E3):
         # safety break out of main while loop
         iteration += 1
         if iteration == maxiter:
-            return ("Sometimes even I,\nlike the very best, struggle.\nLet me try again.", 2)
+            return (random.choice((
+                "Sometimes even I,\nlike the very best, struggle.\nLet me try again.",
+                "It's never easy\nto find all you seek in life.\nI should try again.",
+                "Give me another\nchance at composing haikus.\nYou won't regret it.",
+                "Roses are not red,\nnor violetes are really blue.\nDid not find haikus.",
+                "Such essential words.\nIt's less easy with less text.\nLet me try again.",
+                )), 2)
 
         try:
 
@@ -156,15 +244,36 @@ def get_haiku(string, contiguous=True, maxiter=5E3):
     return ("No haiku was found.\nPlease, try adding some more text.\nAmusement awaits.", 1)
 
 def main(event):
-    input_text = document.querySelector("#text")
-    string = input_text.value.replace("\n", " ")
+    input_div = ps.document.querySelector("#text")
+    string = input_div.value.replace("\n", " ")
 
-    contiguous = document.querySelector("#checkbox").checked
+    contiguous = ps.document.querySelector("#checkbox").checked
 
-    output_div = document.querySelector("#output")
+    output_div = ps.document.querySelector("#output")
     output_div.innerText, exit_code = get_haiku(string, contiguous=contiguous)
 
-    output_div_extra = document.querySelector("#output_extra")
+    output_div_extra = ps.document.querySelector("#output_extra")
     output_div_extra.innerText = ("",
                                     "[no haiku present]",
                                     "[max iterations reached, retry]")[exit_code]
+
+async def scrape_chemrxiv(event):
+
+    input_div = ps.document.querySelector("#text")
+    title, authors, input_div.innerText = await get_random_chemrxiv_paper()
+
+    string = input_div.value.replace("\n", " ")
+
+    checkbox = ps.document.querySelector("#checkbox")
+    checkbox.checked = False
+
+    output_div = ps.document.querySelector("#output")
+    output_div.innerText, exit_code = get_haiku(string, contiguous=False, maxiter=1E4)
+
+    output_div_extra = ps.document.querySelector("#output_extra")
+    output_div_extra.innerText = ("",
+                                    "[no haiku present]",
+                                    "[max iterations reached, retry]")[exit_code]
+    
+    credits_div = ps.document.querySelector("#paper_credits")
+    credits_div.innerText = f"from \"{title}\" by {authors}"
