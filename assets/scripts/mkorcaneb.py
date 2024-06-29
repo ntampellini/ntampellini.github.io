@@ -1,7 +1,7 @@
 #%%
 
 import sys
-from tscode.utils import read_xyz, write_xyz
+from firecode.utils import read_xyz, write_xyz
 import numpy as np
 
 assert len(sys.argv) == 2, "Usage: mkorcaneb.py mep_guess.xyz"
@@ -49,7 +49,7 @@ with open("start.xyz", "w") as f:
 
 inpname = "neb.inp"
 
-s = f'''! R2SCAN-3c CPCM NEB-TS
+s = '''! R2SCAN-3c CPCM NEB-TS
 ! Defgrid3
 
 %pal

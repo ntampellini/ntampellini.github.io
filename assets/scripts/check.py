@@ -16,12 +16,12 @@ indices = None
 zoom = False
 
 if len(sys.argv) == 1:
-    print(f"\n  Check running and completed ORCA jobs and prints/plots relevant information. " +
-           "For scans, extracts local maxima structures. Syntax:\n\n" +
-           "  python check.py filename[.out] [i1] [i2] [zoom]\n\n" + 
-           "  filename: base name of input/output file (with or without extension)\n" +
-           "  i1/i2: optional, plot i1-i2 distance during optimization steps\n" +
-           "  zoom: optional, only shows plot of last 20 iterations.\n")
+    print("\n  Check running and completed ORCA jobs and prints/plots relevant information. " +
+          "For scans, extracts local maxima structures. Syntax:\n\n" +
+          "  python check.py filename[.out] [i1] [i2] [zoom]\n\n" + 
+          "  filename: base name of input/output file (with or without extension)\n" +
+          "  i1/i2: optional, plot i1-i2 distance during optimization steps\n" +
+          "  zoom: optional, only shows plot of last 20 iterations.\n")
     quit()
 
 # move to target directory and get basename
@@ -133,7 +133,7 @@ if propname in files:
         plt.cld()
         plt.plot(x, energies, color=(215 if not neb else 37))
         plt.xlabel("Iteration #")
-        plt.ylabel(f"Energy (kcal/mol)" if not neb else "ΔEE‡ TS(kcal/mol)")
+        plt.ylabel("Energy (kcal/mol)" if not neb else "ΔEE‡ TS(kcal/mol)")
         plt.show()
         print("\n")
         os.system(f"grep HURRAY {rootname}.out | tail -1")
@@ -219,7 +219,7 @@ if scanname in files:
         else:
             plt.xlabel(f"{scan_indices} dihedral Angle (Degrees)")
 
-        plt.ylabel(f"Energy (kcal/mol)")
+        plt.ylabel("Energy (kcal/mol)")
         plt.show()
         print("\n"+"_"*100+"\n")
 

@@ -2,13 +2,13 @@ from subprocess import getoutput
 import sys
 
 if len(sys.argv) == 1:
-    print(f"\n  Compare completed ORCA jobs electronic/free energy of groups of jobs and prints " +
-           "collected energy values. Syntax:\n\n" +
-           "  python compare.py conf*.out [g] [x=folder/file.xyz]\n\n" + 
-           "  conf*.out: base name with generic asterisk descriptor (group of output files)\n" +
-           "  g: optional, uses free energy for the comparison (needs freq calculations).\n" +
-           "  x: extract conformers from the specified files, cutting at 5 kcal/mol and removing duplicates.\n" +
-           "     Writes structures to folder/file.xyz")
+    print("\n  Compare completed ORCA jobs electronic/free energy of groups of jobs and prints " +
+          "collected energy values. Syntax:\n\n" +
+          "  python compare.py conf*.out [g] [x=folder/file.xyz]\n\n" + 
+          "  conf*.out: base name with generic asterisk descriptor (group of output files)\n" +
+          "  g: optional, uses free energy for the comparison (needs freq calculations).\n" +
+          "  x: extract conformers from the specified files, cutting at 5 kcal/mol and removing duplicates.\n" +
+          "     Writes structures to folder/file.xyz")
     quit()
 
 g = False
@@ -20,7 +20,7 @@ else:
     look_for = "FINAL SINGLE POINT ENERGY"
 
 x = False
-x_thr = 5
+x_thr = 3
 if "x" in [kw.split("=")[0] for kw in sys.argv]:
     outname = next((kw.split("=")[-1] for kw in sys.argv if "x" in kw))
     sys.argv.remove(f"x={outname}")
@@ -70,36 +70,56 @@ for i, (name, energy) in enumerate(zip(names, energies)):
     print(s)
 
 if x:
-    from tscode.utils import read_xyz, write_xyz, graphize
+    from firecode.utils import read_xyz, write_xyz, graphize
     from prune import cl_similarity_refining
-    from update import update
     import numpy as np
+    import os
 
-    low_e_names = [name for n, name in enumerate(names) if (energies[n]-min_e)*627.509608030593 < x_thr]
+    low_e_names_and_rel_energies = [(name, (energies[n]-min_e)*627.509608030593) for n, name in enumerate(names) if (energies[n]-min_e)*627.509608030593 < x_thr]
 
-    print(f"Keeping {len(low_e_names)}/{len(names)} structures ({x_thr} kcal/mol thr)")
+    if g:
+        corrections = [c for c, _ in zip(corrections, low_e_names_and_rel_energies)]
 
-    print(f'\nUpdating optimized structures...\n')
+    print(f"Keeping {len(low_e_names_and_rel_energies)}/{len(names)} structures ({x_thr} kcal/mol thr)")
 
-    for name in low_e_names:
-        update(name)
+    print('Reading optimized structures...')
 
-    print(f'Reading optimized structures...')
+    coords, atomnos_list, rel_energies = [], [], []
+    for name, rel_energy in low_e_names_and_rel_energies:
 
-    coords, atomnos_list = [], []
-    for name in low_e_names:
-        mol = read_xyz(name.split('.')[0]+".xyz")
+        trajname = name.split('.')[0]+"_trj.xyz"
+        if os.path.isfile(trajname):
+            filename = trajname
+        else:
+            filename = name.split('.')[0]+".xyz"
+            if os.isfile(filename):
+                print(f'Trajectory file ({trajname}) not found for {name} - using {filename}')
+            
+            else:
+                raise FileNotFoundError(filename)
+
+        mol = read_xyz(filename)
+
         atomnos_list.append(mol.atomnos)
         assert len(mol.atomnos) == len(atomnos_list[0]), f'Not all molecules have the same # of atoms! ({name})'
-        coords.append(mol.atomcoords[0])
+        coords.append(mol.atomcoords[-1])
+        rel_energies.append(rel_energy)
 
     coords = np.array(coords)
     graph = graphize(coords[0], atomnos_list[0])
-    print(f'Removing similar structures...')
-    coords = cl_similarity_refining(coords, atomnos_list[0], graph)
+    
+    print('Removing similar structures...')
+    coords, payload = cl_similarity_refining(coords, atomnos_list[0], graph, payload=[np.array(rel_energies)])
+    rel_energies = payload[0]
+
+    # in case we discarded the most stable
+    rel_energies -= np.min(rel_energies)
 
     with open(outname, "w") as f:
-        for coord, atomnos in zip(coords, atomnos_list):
-            write_xyz(coord, atomnos, f)
+        for i, (coord, atomnos, energy) in enumerate(zip(coords, atomnos_list, rel_energies)):
+            title = f"Rel. E. = {energy:.3f} kcal/mol"
+            if g:
+                title += f" - gcorr(Eh) = {corrections[i]:8}"
+            write_xyz(coord, atomnos, f, title=title)
 
     print(f"Wrote {len(coords)} structures to {outname}.")

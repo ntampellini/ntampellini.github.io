@@ -15,23 +15,24 @@ options = {
 }
 ####################################################
 
-from tscode.calculators._xtb import xtb_opt
-from tscode.utils import read_xyz, write_xyz
-from tscode.algebra import norm_of, dihedral
+from firecode.calculators._xtb import xtb_opt, xtb_gsolv
+from firecode.utils import read_xyz, write_xyz, time_to_string
+from firecode.algebra import norm_of, dihedral
 import os 
 import numpy as np
 import sys
+from time import perf_counter
 
 if len(sys.argv) == 1:
-    print(f"\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
-           "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge=n]\n\n" + 
-           "  filename*.xyz: Base name of input geometry file(s)\n" +
-           "  newfile: Optional, creates a new file, preserving the original\n" +
-           "  ff: Optional, use GFN-FF instead of GFN2-XTB\n" +
-           "  sp: Optional, do not optimize but just run a single point energy calculation\n" +
-           "  c: Optional, specify one or more distance/dihedral constraints to be imposed\n" +
-           "  charge=n: Optional, where \"n\" is an integer. Specify the charge to be passed to XTB\n"
-           )
+    print("\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
+          "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge=n]\n\n" + 
+          "  filename*.xyz: Base name of input geometry file(s)\n" +
+          "  newfile: Optional, creates a new file, preserving the original\n" +
+          "  ff: Optional, use GFN-FF instead of GFN2-XTB\n" +
+          "  sp: Optional, do not optimize but just run a single point energy calculation\n" +
+          "  c: Optional, specify one or more distance/dihedral constraints to be imposed\n" +
+          "  charge=n: Optional, where \"n\" is an integer. Specify the charge to be passed to XTB\n"
+        )
     quit()
 
 if "ff" in sys.argv:
@@ -42,19 +43,37 @@ if "ff" in sys.argv:
 constraints, distances = [], []
 newfile = False
 free_energy = False
+aimnet2 = False
+
+if "solvent" in [kw.split('=')[0] for kw in sys.argv]:
+
+    options["solvent"] = next(kw.split('=')[1] for kw in sys.argv if kw.split('=')[0] == 'solvent')
+    print(f"--> Setting solvent to {options['solvent']}")
+    sys.argv.remove(f"solvent={options['solvent']}")
+
+if "aim" in sys.argv:
+
+    from aimnet2_firecode.interface import get_aimnet2_calc, aimnet2_opt
+    
+    print("--> using aimnet2 via ASE")
+    calc = get_aimnet2_calc()
+    aimnet2 = True
+    options["method"] = ['AIMNet2/wB97M-V']
+    # options["solvent"] = None
+    sys.argv.remove("aim")
 
 if "flat" in sys.argv:
     sys.argv.remove("flat")
     assert len(sys.argv) == 2, "Single molecule only!"
 
-    from tscode.utils import graphize
+    from firecode.utils import graphize
     from networkx import cycle_basis
     from utils import cycle_to_dihedrals, get_exocyclic_dihedrals
 
     mol = read_xyz(sys.argv[1])
     graph = graphize(mol.atomcoords[0], mol.atomnos)
 
-    cycles = [l for l in cycle_basis(graph) if len(l) in (7, 8, 9)]
+    cycles = [l_ for l_ in cycle_basis(graph) if len(l_) in (7, 8, 9)]
     assert len(cycles) == 1, "Only 7/8/9-membered ring flips at the moment"
 
     dihedrals = cycle_to_dihedrals(cycles[0])
@@ -102,7 +121,7 @@ if "c" in sys.argv:
 if "g" in sys.argv:
     sys.argv.remove("g")
     free_energy = True
-    from tscode.calculators._xtb import xtb_get_free_energy
+    from firecode.calculators._xtb import xtb_get_free_energy
     print('--> Requested free energy calculation')
 
 
@@ -114,7 +133,7 @@ if any(["constr" in kw.split(",") for kw in sys.argv]):
     parts = string.split(",")
     assert len(parts) == 4
     distances.append(float(parts[3]))
-    constraints.append([int(x) for x in parts[1:3]])
+    constraints.append([int(x) for x in parts[1:3]]+[float(parts[3])])
 
 if "sp" in sys.argv:
     sys.argv.remove("sp")
@@ -154,6 +173,8 @@ energies, names_confs, constrained_indices, constrained_distances, constrained_d
 for i, name in enumerate(names):
     data = read_xyz(name)
 
+    print()
+
     outname = name if not newfile else name[:-4] + "_xtbopt.xyz"
     if newfile and (outname in os.listdir()):
         os.remove(outname)
@@ -188,27 +209,64 @@ for i, name in enumerate(names):
         action = "Optimizing" if options["opt"] else "Calculating SP energy on"
         for method in options["method"]:
             print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
-            coords, energy, success = xtb_opt(coords,
-                                              data.atomnos,
-                                              constrained_indices=constrained_indices,
-                                              constrained_distances=constrained_distances,
-                                              constrained_dihedrals=constrained_dihedrals,
-                                              constrained_dih_angles=constrained_dih_angles,
-                                              constrain_string=options["constrain_string"],
-                                              method=method,
-                                              solvent=options["solvent"],
-                                              charge=options["charge"],
-                                              opt=options["opt"],
-                                            )
+            t_start = perf_counter()
 
-            if options["opt"]:
+            if aimnet2:
+
+                assert constrained_dihedrals == [], "No dih angles for aim yet..."
+
+                coords, energy, success = aimnet2_opt(
+                                                        coords,
+                                                        data.atomnos,
+                                                        constrained_indices=constrained_indices,
+                                                        constrained_distances=constrained_distances,
+                                                        ase_calc=calc,
+                                                        # traj=name[:-4] + "_traj.xyz",
+                                                        logfunction=print,
+                                                        title='temp',
+                                                        charge=options["charge"],
+                                                        maxiter=500 if options["opt"] else 1,
+                                                    )
+                
+                if options["solvent"] is not None:
+                    gsolv = xtb_gsolv(
+                                        coords,
+                                        data.atomnos,
+                                        charge=options['charge'],
+                                        solvent=options['solvent'],
+                                    )
+                    print(f'--> {name}: ALPB GSolv = {gsolv:.2f} kcal/mol')
+                    energy += gsolv
+
+            else:
+            
+                coords, energy, success = xtb_opt(coords,
+                                                data.atomnos,
+                                                constrained_indices=constrained_indices,
+                                                constrained_distances=constrained_distances,
+                                                constrained_dihedrals=constrained_dihedrals,
+                                                constrained_dih_angles=constrained_dih_angles,
+                                                constrain_string=options["constrain_string"],
+                                                method=method,
+                                                solvent=options["solvent"],
+                                                charge=options["charge"],
+                                                opt=options["opt"],
+                                                )
+
+            elapsed = perf_counter() - t_start
+
+            if energy is None:
+                print(f'--> ERROR: Optimization of {name} crashed. ({time_to_string(elapsed)})')
+
+            elif options["opt"]:
                 with open(outname, write_type) as f:
                     write_xyz(coords, data.atomnos, f, title=f'Energy = {energy} kcal/mol')
-                print(f"{'Appended' if write_type == 'a' else 'Wrote'} optimized structure at {outname}")
+                print(f"{'Appended' if write_type == 'a' else 'Wrote'} optimized structure at {outname} - {time_to_string(elapsed)}")
 
         if free_energy:
-            print(f'Calculating Free Energy on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
-            energy = xtb_get_free_energy(coords, data.atomnos, method=method, solvent=options["solvent"], charge=options["charge"])
+            sph = (len(constraints) != 0)
+            print(f'Calculating Free Energy{" (SPH)" if sph else ""} on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
+            energy = xtb_get_free_energy(coords, data.atomnos, method=method, solvent=options["solvent"], charge=options["charge"], sph=sph)
 
         energies.append(energy)
         names_confs.append(name[:-4]+f"_conf{c_n+1}")
@@ -217,10 +275,14 @@ for i, name in enumerate(names):
         if len(constraint) == 2:
             print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A")
 
-if len(names_confs) > 1:
-    min_e = min(energies)
-else:
-    min_e = 0
+if None not in energies:
 
-for nc, energy in zip(names_confs, energies):
-    print(f"ENERGY -> {nc} = {round(energy-min_e, 3)} kcal/mol")
+    if len(names_confs) > 1:
+        min_e = min(energies)
+    else:
+        min_e = 0
+
+    print()
+    longest_name = max([len(s) for s in names_confs])
+    for nc, energy in zip(names_confs, energies):
+        print(f"ENERGY -> {nc:{longest_name}s} = {energy-min_e:.2f} kcal/mol")

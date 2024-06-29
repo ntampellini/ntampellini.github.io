@@ -1,6 +1,7 @@
 ####################################################
 options = {
-    "solvent" : "chloroform",
+    "solvent" : "toluene",
+    "solvent_model" : 'CPCM',
     "level" : "R2SCAN-3c",
     "basis_set" : "",
     "opt": "",
@@ -19,10 +20,11 @@ options = {
     }
 
 epsilon = {
-     "ch2cl2" : 9.04,
+     "dichloromethane" : 9.04,
      "chloroform" : 4.81,
      "phcf3" : 9.18,
      "dmso" : 47.2,
+     "toluene" : 2.4,
 }
 
 # round temperature so it looks prettier
@@ -34,18 +36,18 @@ import os
 import sys
 
 if len(sys.argv) == 1:
-    print(f"\n  Makes one or more ORCA inputs following the desired specifications. Syntax:\n\n" +
-           "  python mkorca.py conf*.xyz [option]\n\n" + 
-           "  conf*.xyz: base name of input geometry file(s)\n" +
-           "  option:\n" +
-           "    sp:     single-point energy calculation.\n" +
-           "    fastsp: fast single-point energy calculation.\n" +
-           "    optf:   optimization + frequency calculation.\n" +
-           "    popt:   partial optimization (specify distance constraint).\n" +
-           "    ts:     eigenvector-following saddle point optimization.\n" +
-           "    nmr:    single-point energy calculation with NMR shieldings.\n" + 
-           "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
-           )
+    print("\n  Makes one or more ORCA inputs following the desired specifications. Syntax:\n\n" +
+          "  python mkorca.py conf*.xyz [option]\n\n" + 
+          "  conf*.xyz: base name of input geometry file(s)\n" +
+          "  option:\n" +
+          "    sp:     single-point energy calculation.\n" +
+          "    fastsp: fast single-point energy calculation.\n" +
+          "    optf:   optimization + frequency calculation.\n" +
+          "    popt:   partial optimization (specify distance constraint).\n" +
+          "    ts:     eigenvector-following saddle point optimization.\n" +
+          "    nmr:    single-point energy calculation with NMR shieldings.\n" + 
+          "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
+        )
     quit()
 
 def get_comp_script_inp(rootname):
@@ -68,8 +70,21 @@ end
 
 '''
 
+def get_cpcm_block(solvent, solvent_model):
+    s = '%cpcm\n'
+    if solvent_model == 'CPCM':
+        s += f"  epsilon {epsilon[options['solvent']]}\n"
+    elif solvent_model == 'SMD':
+        s += f"  smd True\n  SMDsolvent \"{options['solvent']}\"\n"
+    else:
+        raise Exception(f'Solvent model \"{solvent_model}\" not recognized (use CPCM or SMD)')
+
+    s += "end"
+
+    return s
+
 def get_inp(rootname):
-    return f'''! {options["level"]} {options["basis_set"]} CPCM {options["opt"]}
+    return f'''! {options["level"]} {options["basis_set"]} {"CPCM" if options["solvent_model"] == "CPCM" else ""} {options["opt"]}
 ! {options["additional_kw"]}
 
 %pal
@@ -83,9 +98,7 @@ end
   {"Calc_Hess true" if options["ts"] else ""}
 end
 
-%cpcm
-  epsilon {epsilon[options["solvent"]]}
-end
+{get_cpcm_block(options["solvent"], options["solvent_model"])}
 
 {f"%freq temp {options['temp']} end" if options["freq"] else ""}
 
@@ -106,6 +119,7 @@ if "sp" in sys.argv:
     options["freq"] = False
     options["level"] = 'wB97M-V'
     options["basis_set"] = 'def2-TZVPP'
+    options["solvent_model"] = 'SMD'
 
 if "fastsp" in sys.argv:
     sys.argv.remove("fastsp")
@@ -168,7 +182,7 @@ if "irc" in sys.argv:
     options["additional_kw"] += " IRC"
     options["opt"] = ""
 
-if options["freq"] and not "Freq" in options["additional_kw"]:
+if options["freq"] and"Freq" not in options["additional_kw"]:
     options["additional_kw"] += " Freq"
 
 

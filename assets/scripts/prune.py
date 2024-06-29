@@ -1,15 +1,14 @@
 import time
 import sys
 
-from tscode.utils import time_to_string, graphize, read_xyz, write_xyz
-from tscode.rmsd_pruning import prune_conformers_rmsd
-from tscode.torsion_module import prune_conformers_rmsd_rot_corr
-from tscode.optimization_methods import prune_by_moment_of_inertia, prune_conformers_rmsd
+from firecode.utils import time_to_string, graphize, read_xyz, write_xyz
+from firecode.pruning import prune_by_rmsd, prune_by_rmsd_rot_corr, prune_by_moment_of_inertia
 
-def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_thr=0.25, verbose=False):
+def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_thr=0.25, verbose=False, payload=None):
     
         '''
         Removes structures that are too similar to each other (RMSD-based).
+        payload: list of arrays that will be returned at the end, with each sequential maks applied to each element of the list
 
         '''
 
@@ -29,6 +28,8 @@ def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_th
 
                 coords, mask = prune_by_moment_of_inertia(coords, atomnos)
 
+                if payload is not None:
+                    payload = [elem[mask] for elem in payload]
 
                 if before3 > len(coords):
                     print(f'Discarded {int(len([b for b in mask if not b]))} candidates for MOI similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
@@ -39,7 +40,10 @@ def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_th
             t_start = time.perf_counter()
 
             # coords, mask = prune_conformers_rmsd(coords, atomnos, max_rmsd=self.options.rmsd, verbose=verbose)
-            coords, mask = prune_conformers_rmsd(coords, atomnos, rmsd_thr=rmsd_thr)
+            coords, mask = prune_by_rmsd(coords, atomnos, max_rmsd=rmsd_thr)
+
+            if payload is not None:
+                payload = [elem[mask] for elem in payload]
 
             if before1 > len(coords):
                 print(f'Discarded {int(len([b for b in mask if not b]))} candidates for RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
@@ -51,7 +55,10 @@ def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_th
                 before2 = len(coords)
                 t_start = time.perf_counter()
 
-                coords, mask = prune_conformers_rmsd_rot_corr(coords, atomnos, graph, max_rmsd=rmsd_thr, verbose=verbose, logfunction=(print if verbose else None))
+                coords, mask = prune_by_rmsd_rot_corr(coords, atomnos, graph, max_rmsd=rmsd_thr, logfunction=(print if verbose else None))
+
+                if payload is not None:
+                    payload = [elem[mask] for elem in payload]
 
                 if before2 > len(coords):
                     print(f'Discarded {int(len([b for b in mask if not b]))} candidates for symmetry-corrected RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
@@ -60,7 +67,7 @@ def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_th
         if verbose and len(coords) == before:
             print(f'All structures passed the similarity check.{" "*15}')
 
-        return coords
+        return coords, payload
 
 if __name__ == '__main__':
 
@@ -70,7 +77,7 @@ if __name__ == '__main__':
     mol = read_xyz(filename)
     graph = graphize(mol.atomcoords[0], mol.atomnos)
 
-    pruned = cl_similarity_refining(mol.atomcoords, mol.atomnos, graph, verbose=True)
+    pruned, _ = cl_similarity_refining(mol.atomcoords, mol.atomnos, graph, verbose=True)
 
     with open(outname, "w") as f:
         for s in pruned:

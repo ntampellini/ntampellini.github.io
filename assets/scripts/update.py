@@ -5,10 +5,10 @@ import os
 done = []
 
 if len(sys.argv) == 1:
-    print(f"\n  Updates ORCA input files by replacing them with the last step of the optimization trajectory. Syntax:\n\n" +
-           "  python update.py conf*.xyz\n\n" + 
-           "  conf*.xyz: base name of input geometry file(s)\n"
-           )
+    print("\n  Updates ORCA input files by replacing them with the last step of the optimization trajectory. Syntax:\n\n" +
+          "  python update.py conf*.xyz\n\n" + 
+          "  conf*.xyz: base name of input geometry file(s)\n"
+        )
     quit()
 
 def update(name):
@@ -28,10 +28,12 @@ def update(name):
             print(f"Updated {inp}")
             
             done.append(traj)
+            return True
 
         else:
 
-            f"Can't find {traj}"
+            print(f"Can't find {traj}")
+            return False
 
 if __name__ == "__main__":
 

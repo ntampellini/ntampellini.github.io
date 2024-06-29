@@ -2,17 +2,22 @@ import os
 import sys
 from subprocess import getoutput
 
-look_for = "Final Gibbs free energy"
+# look_for = "Final Gibbs free energy"
+look_for = "ORCA TERMINATED NORMALLY"
 completed, incomplete = [], []
 
 
 for name in sys.argv[1:]:
-    print(f'Reading {name}...', end="\r")
-    try:
-        energy = float(getoutput(f'grep \"{look_for}\" {name} | tail -1').rstrip(" Eh").split()[-1])
-        completed.append(name)
+
+    basename = name.split(".")[0]
+    outname = basename + ".out"
+
+    print(f'Reading {basename}...', end="\r")
     
-    except IndexError:
+    if outname in os.listdir() and getoutput(f'grep \"{look_for}\" {outname}') != "":
+        completed.append(name)
+
+    else:
         incomplete.append(name)
 
 if len(incomplete) == 0:

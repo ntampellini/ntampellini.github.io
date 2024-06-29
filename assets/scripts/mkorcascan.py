@@ -23,12 +23,12 @@ from cclib.io import ccread
 from numpy.linalg import norm
 
 if len(sys.argv) == 1:
-    print(f"\n  Makes an ORCA input file for a distance scan. Syntax:\n\n" +
-           "  python mkorcascan.py filename.xyz i1 i2 target\n\n" + 
-           "  filename.xyz: base name of input geometry file\n" +
-           "  i1/i2: indices of atoms to scan\n" +
-           "  target: desired distance between indices at end of scan.\n"
-           )
+    print("\n  Makes an ORCA input file for a distance scan. Syntax:\n\n" +
+          "  python mkorcascan.py filename.xyz i1 i2 target\n\n" + 
+          "  filename.xyz: base name of input geometry file\n" +
+          "  i1/i2: indices of atoms to scan\n" +
+          "  target: desired distance between indices at end of scan.\n"
+        )
     quit()
 
 
