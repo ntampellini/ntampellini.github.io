@@ -32,35 +32,54 @@ function constants(conv) {
             return numE;
 }
 
+function springConstants(conv) {
+   var numE = 4;
+// Eh/bohr**2
+          conv[0] = 1.000 ;
+// Eh/A**2
+          conv[1] = 1/((0.529177249)**2) ;
+// eV/A**2
+          conv[2] = 2.7211399E+01 * conv[1] ;
+// kcal/A**2
+          conv[3] = 627.5096080305927 * conv[1] ;
+   return numE;
+}
+
 function displayInfo(form,field) {
 // find field index
-   for (var i=0; i<=nfields; i++) {
-   if ( form.elements[i].name == field ) {
-   idx = i ;
-   break;
-     }
-}
-// find number of characters in input string for significant figure functions
-    nchars = form.elements[idx].value.length +1 ;
 
-// calculate the base energy in Hartrees
-  if ( idx != 7) {
-   energy = form.elements[idx].value/conv[idx];
-						          } else {
-   energy = Math.log(form.elements[idx].value)*298.15/conv[idx];
-                      }
-
-// convert to other units
-for (var i=0; i<=nfields; i++) {
-   if ( i != idx ) {
-        if ( i != 7) {
-         form.elements[i].value = trunc(energy*conv[i],nchars) ;
-                   } else {
-        form.elements[i].value = trunc(Math.exp(energy*conv[i]/298.15),4) ;
-                   }
-     }
+   for (var i=0; i<=(spring_nfields+nfields+1); i++) {
+      if ( form.elements[i].name == field ) {
+         idx = i ;
+         break;
+      }
    }
-   boltzmann()
+   // console.log("idx is", idx)
+   if (idx >= 9) { displaySpringInfo(form,field) } else {
+
+      // find number of characters in input string for significant figure functions
+      nchars = form.elements[idx].value.length +1 ;
+
+      // calculate the base energy in Hartrees
+      if ( idx != 7) {
+         energy = form.elements[idx].value/conv[idx];
+      } else {
+         energy = Math.log(form.elements[idx].value)*298.15/conv[idx];
+      }
+
+      // convert to other units
+      for (var i=0; i<=nfields; i++) {
+         if ( i != idx ) {
+            if ( i != 7) {
+               form.elements[i].value = trunc(energy*conv[i],nchars) ;
+            } else {
+               form.elements[i].value = trunc(Math.exp(energy*conv[i]/298.15),4) ;
+            }
+         }
+      }
+
+      boltzmann()
+   }
 }
 
 function setT() {
@@ -160,11 +179,41 @@ function trunc(x,n) {
    return Math.floor(x*Math.pow(10,-ord(x)+n-1)+.5)/Math.pow(10,-ord(x)+n-1)
 }
 
+function displaySpringInfo(form,field) {
+
+   // find field index
+   for (var i=0; i<=(spring_nfields+nfields+1); i++) {
+      if ( form.elements[i].name == field ) {
+         idx = i ;
+         break;
+     }
+   }
+
+   // find number of characters in input string for significant figure functions
+   nchars = form.elements[idx].value.length +3 ;
+
+   // calculate the base spring force constant in Hartrees over A squared
+   k = form.elements[idx].value/springConv[idx-9];
+   console.log("idx is", idx)
+   console.log("k is", k)
+
+   // convert to other units
+   for (var i=0; i<=(spring_nfields+nfields+1); i++) {
+      if ( i != idx ) {
+         form.elements[i].value = trunc(k*springConv[i-9],nchars) ;
+      }
+      }
+   }
+
 // MAIN variable declarations
  var energy = 0.000;
  var nchars = 0;
  var conv = new Array();
  var nfields = constants(conv);
+
+ var k = 0.000;
+ var springConv = new Array();
+ var spring_nfields = springConstants(springConv)
 
 </SCRIPT>
 </HEAD>
@@ -211,4 +260,12 @@ Change the number of electrons transferred, z=
 <INPUT TYPE="text" NAME="z" SIZE="2" VALUE="1" onChange="boltzmann();"><BR>
 Then, V=
 <INPUT TYPE="text" NAME="V" SIZE="7" VALUE="0" onFocus="blur();"> V<BR>
+
+<H3>Spring constants</H3>
+<INPUT TYPE="text" NAME="Eh_bohr" VALUE="0" onChange="displayInfo(this.form,this.name);"> Eh/bohr<sup>2</sup><BR>
+<INPUT TYPE="text" NAME="Eh_A" VALUE="0" onChange="displayInfo(this.form,this.name);"> Eh/A<sup>2</sup><BR>
+<INPUT TYPE="text" NAME="eV_A" VALUE="0" onChange="displayInfo(this.form,this.name);"> eV/A<sup>2</sup><BR>
+<INPUT TYPE="text" NAME="kcal_A" VALUE="0" onChange="displayInfo(this.form,this.name);"> kcal/A<sup>2</sup><BR>
+
+
 </FORM>

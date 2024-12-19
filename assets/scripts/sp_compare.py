@@ -47,8 +47,8 @@ def main(argvs, outname):
     for name, d in data.items():
         d["Rel. G (kcal/mol)"] = (d["G(Eh)"] - min_e) * 627.509608030592
 
-    print("Name                Rel. G (kcal/mol)")
-    print("-------------------------------------")
+    print(f"Name                Rel. G (kcal/mol)")
+    print(f"-------------------------------------")
     for basename, d in sorted(data.items(), key=lambda item: item[1]["G(Eh)"]):
         print(f"{basename:20}{d['Rel. G (kcal/mol)']:.2f}")
 

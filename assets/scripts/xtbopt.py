@@ -6,7 +6,7 @@ options = {
     "method" : [#"GFN-FF",
                 "GFN2-XTB",
                ],
-    "solvent" : "ch2cl2",
+    "solvent" : "chloroform",
     "charge" : 0,
 
     # specifies an atomic index to be forced planar
@@ -15,13 +15,14 @@ options = {
 }
 ####################################################
 
-from firecode.calculators._xtb import xtb_opt, xtb_gsolv
-from firecode.utils import read_xyz, write_xyz, time_to_string
-from firecode.algebra import norm_of, dihedral
-import os 
-import numpy as np
+import os
 import sys
 from time import perf_counter
+
+import numpy as np
+from firecode.algebra import dihedral, norm_of, point_angle
+from firecode.calculators._xtb import xtb_gsolv, xtb_opt
+from firecode.utils import read_xyz, time_to_string, write_xyz, Constraint
 
 if len(sys.argv) == 1:
     print("\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
@@ -42,7 +43,7 @@ if "ff" in sys.argv:
 
 constraints, distances = [], []
 newfile = False
-free_energy = False
+add_free_energy = False
 aimnet2 = False
 
 if "solvent" in [kw.split('=')[0] for kw in sys.argv]:
@@ -53,7 +54,7 @@ if "solvent" in [kw.split('=')[0] for kw in sys.argv]:
 
 if "aim" in sys.argv:
 
-    from aimnet2_firecode.interface import get_aimnet2_calc, aimnet2_opt
+    from aimnet2_firecode.interface import aimnet2_opt, get_aimnet2_calc
     
     print("--> using aimnet2 via ASE")
     calc = get_aimnet2_calc()
@@ -68,14 +69,17 @@ if "flat" in sys.argv:
 
     from firecode.utils import graphize
     from networkx import cycle_basis
+
     from utils import cycle_to_dihedrals, get_exocyclic_dihedrals
 
     mol = read_xyz(sys.argv[1])
     graph = graphize(mol.atomcoords[0], mol.atomnos)
 
     cycles = [l_ for l_ in cycle_basis(graph) if len(l_) in (7, 8, 9)]
+    # if len(cycles) == 1:
     assert len(cycles) == 1, "Only 7/8/9-membered ring flips at the moment"
 
+    print(f"--> flat: Found {len(cycles[0])}-membered ring")
     dihedrals = cycle_to_dihedrals(cycles[0])
     exocyclic = get_exocyclic_dihedrals(graph, cycles[0])
     target_angles = np.array([0 for _ in dihedrals] + [180 for _ in exocyclic])
@@ -83,9 +87,28 @@ if "flat" in sys.argv:
     for (a, b, c, d), target in zip((dihedrals + exocyclic), target_angles):
         constraints.append([a, b, c, d, target])
 
-    print(f"--> flat: Found {len(cycles[0])}-membered ring")
+if "flat" in [kw.split("=")[0] for kw in sys.argv]:
 
+    flat_index = int(next(kw.split('=')[1] for kw in sys.argv if kw.split('=')[0] == 'flat'))
+    print(f"--> Flattening atom {flat_index}")
+    sys.argv.remove(f"flat={flat_index}")
+
+    from firecode.utils import graphize
+    from firecode.graph_manipulations import neighbors
+
+    mol = read_xyz(sys.argv[1])
+    graph = graphize(mol.atomcoords[0], mol.atomnos)
+    nb = neighbors(graph, flat_index)
+
+    assert len(nb) == 3, f'--> index {flat_index} has {len(nb)} neighbors - can only flatten trigonal pyramidal atoms.'
+    
+    a, b, c = nb
+    constraints.append([a, flat_index, b, c, 180])
+    constraints.append([b, flat_index, c, a, 180])
+    constraints.append([c, flat_index, b, a, 180])
+    
 if "c" in sys.argv:
+    
     sys.argv.remove("c")
 
     while True:
@@ -95,45 +118,53 @@ if "c" in sys.argv:
         if data == []:
             break
 
-        try:
+        # try:
 
-            assert len(data) in (2, 3, 4, 5), "Only distances (+optional target, 2 or 3 numbers) or dihedrals (+optional target) supported (4 or 5 numbers)"
+        assert len(data) in (2, 3, 4, 5), "Only 2-4 indices as ints + optional target as a float"
 
-            if len(data) == 2:
-                indices = [int(x) for x in data]
+        value = None
+        if '.' in data[-1]:
+            value = float(data.pop(-1))
+
+        constraint = Constraint([int(i) for i in data], value=value)                
+        constraints.append(constraint)
             
-            elif len(data) == 3:
-                indices = [int(x) for x in data[0:2]]+ [float(data[2])]
-
-            elif len(data) == 4:
-                indices = [int(x) for x in data]
-
-            elif len(data) == 5:
-                indices = [int(x) for x in data[0:4]] + [float(data[4])]
-                
-            constraints.append(indices)
-            
-        except Exception as e:
-            print(e)
+        # except Exception as e:
+        #     print(e)
 
     print(f"Specified {len(constraints)} constraints")
 
+if "c" in [kw.split("=")[0] for kw in sys.argv]:
+    c_filename = next((kw.split("=")[-1] for kw in sys.argv if "c=" in kw))
+    sys.argv.remove(f"c={c_filename}")
+
+    # set constraints from file
+    with open(c_filename, 'r') as f:
+        lines = f.readlines()
+
+    for line in lines:
+        data = line.split()
+        try:
+
+            assert len(data) in (2, 3, 4, 5), "Only 2-4 indices as ints + optional target as a float"
+
+            value = None
+            if '.' in data[-1]:
+                value = float(data.pop(-1))
+
+            constraint = Constraint([int(i) for i in data], value=value)                
+            constraints.append(constraint)
+
+        except Exception as e:
+            print(e)
+
+    print(f'--> Read constraints from {c_filename}')
+
 if "g" in sys.argv:
     sys.argv.remove("g")
-    free_energy = True
+    add_free_energy = True
     from firecode.calculators._xtb import xtb_get_free_energy
-    print('--> Requested free energy calculation')
-
-
-if any(["constr" in kw.split(",") for kw in sys.argv]):
-    string = [kw for kw in sys.argv if "constr" in kw.split(",")][0]
-    sys.argv.remove(string)
-    # clunky way to do it, I know ... but allows for non-interactive usage. "constr,i1,i2,ds"
-    
-    parts = string.split(",")
-    assert len(parts) == 4
-    distances.append(float(parts[3]))
-    constraints.append([int(x) for x in parts[1:3]]+[float(parts[3])])
+    print('--> Requested free energy calculation - adding Gcorr from GFN-FF')
 
 if "sp" in sys.argv:
     sys.argv.remove("sp")
@@ -169,6 +200,7 @@ else:
         names.append(name)
 
 energies, names_confs, constrained_indices, constrained_distances, constrained_dihedrals, constrained_dih_angles = [], [], [], [], [], []
+constrained_angles_indices, constrained_angles_values = [], []
 
 for i, name in enumerate(names):
     data = read_xyz(name)
@@ -182,29 +214,30 @@ for i, name in enumerate(names):
 
     for c_n, coords in enumerate(data.atomcoords):
         for constraint in constraints:
-            if len(constraint) in (2, 3):
-                if len(constraint) == 2:
-                    a, b = constraint
-                    target = norm_of(coords[a]-coords[b])
-                else:
-                    a, b, target = constraint
+                
+            if constraint.type == 'B':
+                constrained_indices.append(constraint.indices)
+                constrained_distances.append(constraint.value)
 
-                constrained_indices.append([a, b])
-                constrained_distances.append(target)
+                a, b = constraint.indices
+                print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A at start of optimization (target is {constraint.value} A)")
 
-                print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A at start of optimization (target is {target} A)")
-                       
-            elif len(constraint) in (4, 5):
-                if len(constraint) == 4:
-                    a, b, c, d = constraint
-                    dih_angle = dihedral(np.array([coords[a],coords[b],coords[c], coords[d]]))
-                else:
-                    a, b, c, d, dih_angle = constraint
+            elif constraint.type == 'A':
+                constrained_angles_indices.append(constraint.indices)
+                constrained_angles_values.append(constraint.value)
+                
+                a, b, c = constraint.indices
+                print(f"CONSTRAIN ANGLE -> Angle({a}-{b}-{c}) = {round(point_angle(coords[a],coords[b],coords[c]), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
 
-                constrained_dihedrals.append([a, b, c, d])
-                constrained_dih_angles.append(dih_angle)
+            elif constraint.type == 'D':
+                if constraint.value is None:
+                    constraint.value = dihedral(np.array([coords[a],coords[b],coords[c], coords[d]]))
 
-                print(f"CONSTRAIN DIHEDRAL -> Dih({a}-{b}-{c}-{d}) = {round(dihedral(np.array([coords[a],coords[b],coords[c], coords[d]])), 3)} ° at start of optimization, target {round(dih_angle, 3)}")
+                constrained_dihedrals.append(constraint.indices)
+                constrained_dih_angles.append(constraint.value)
+
+                a, b, c, d = constraint.indices
+                print(f"CONSTRAIN DIHEDRAL -> Dih({a}-{b}-{c}-{d}) = {round(dihedral(np.array([coords[a],coords[b],coords[c], coords[d]])), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
         
         action = "Optimizing" if options["opt"] else "Calculating SP energy on"
         for method in options["method"]:
@@ -218,14 +251,24 @@ for i, name in enumerate(names):
                 coords, energy, success = aimnet2_opt(
                                                         coords,
                                                         data.atomnos,
+
                                                         constrained_indices=constrained_indices,
                                                         constrained_distances=constrained_distances,
+
+                                                        constrained_angles_indices=constrained_angles_indices,
+                                                        constrained_angles_values=constrained_angles_values,
+
+                                                        constrained_dihedrals_indices=constrained_dihedrals,
+                                                        constrained_dihedrals_values=constrained_dih_angles,
+
                                                         ase_calc=calc,
-                                                        # traj=name[:-4] + "_traj.xyz",
+                                                        traj=name[:-4] + "_traj",
                                                         logfunction=print,
-                                                        title='temp',
+                                                        # title='temp',
                                                         charge=options["charge"],
                                                         maxiter=500 if options["opt"] else 1,
+
+                                                        debug=True,
                                                     )
                 
                 if options["solvent"] is not None:
@@ -240,6 +283,8 @@ for i, name in enumerate(names):
 
             else:
             
+                assert constrained_angles_indices == [], "No planar angles for xtb_opt yet..."
+
                 coords, energy, success = xtb_opt(coords,
                                                 data.atomnos,
                                                 constrained_indices=constrained_indices,
@@ -263,10 +308,12 @@ for i, name in enumerate(names):
                     write_xyz(coords, data.atomnos, f, title=f'Energy = {energy} kcal/mol')
                 print(f"{'Appended' if write_type == 'a' else 'Wrote'} optimized structure at {outname} - {time_to_string(elapsed)}")
 
-        if free_energy:
+        if add_free_energy:
             sph = (len(constraints) != 0)
-            print(f'Calculating Free Energy{" (SPH)" if sph else ""} on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
-            energy = xtb_get_free_energy(coords, data.atomnos, method=method, solvent=options["solvent"], charge=options["charge"], sph=sph)
+            print(f'Calculating Free Energy contribution{" (SPH)" if sph else ""} on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
+            gcorr = xtb_get_free_energy(coords, data.atomnos, method='GFN-FF', solvent=options["solvent"], charge=options["charge"], sph=sph, grep='Gcorr')
+            print(f'GCORR: {name}, conf {c_n+1} - {gcorr:.2f} kcal/mol')
+            energy += gcorr
 
         energies.append(energy)
         names_confs.append(name[:-4]+f"_conf{c_n+1}")

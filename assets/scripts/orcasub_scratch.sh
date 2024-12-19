@@ -30,7 +30,7 @@ function copy_files_to_submit_dir {
   cp $tdir/$job.out $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/$job.gbw $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.engrad $SLURM_SUBMIT_DIR 2>/dev/null || :
-  cp $tdir/$job*xyz $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/$job*.xyz $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.loc $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.qro $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.uno $SLURM_SUBMIT_DIR 2>/dev/null || :
@@ -46,19 +46,22 @@ function copy_files_to_submit_dir {
   cp $tdir/*.scfr $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.nbo $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/FILE.47 $SLURM_SUBMIT_DIR 2>/dev/null || :
-  cp $tdir/${job}_property.txt $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/${job}.property.txt $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*spin* $SLURM_SUBMIT_DIR 2>/dev/null || :
 }
 
 trap '"Timeout! Transfering files back to ${SLURM_SUBMIT_DIR} before Slurm kills the job." >> ${1}.out; copy_files_to_submit_dir; exit 2' SIGUSR1
 
 module purge
-module load xtb/6.5.1-foss-2020b ORCA/5.0.4-gompi-2020b
+module load xtb/6.6.0-foss-2020b ORCA/6.0.0-gompi-2022b
 
 export RSH_COMMAND="/usr/bin/ssh -x"
-export orcadir=/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/bin
-export LD_LIBRARY_PATH=/vast/palmer/apps/avx2/software/GCCcore/10.2.0/lib64/:/vast/palmer/apps/avx2/software/ORCA/5.0.4-gompi-2020b/lib/:$orcadir
+export orcadir=/vast/palmer/apps/avx2/software/ORCA/6.0.0-gompi-2022b/bin
+export LD_LIBRARY_PATH=/vast/palmer/apps/avx2/software/GCCcore/10.2.0/lib64/:/vast/palmer/apps/avx2/software/ORCA/6.0.0-gompi-2022b/lib/:$orcadir
 export job=$1
+
+# let ORCA know where the XTB executable is
+export XTBEXE=/vast/palmer/apps/avx2/software/xtb/6.6.0-foss-2020b/bin/xtb
 
 # Creating local scratch folder for the user on the computing node, if none exists.
 export scratchlocation=/vast/palmer/scratch/miller
@@ -73,9 +76,14 @@ tdir=$(mktemp -d $scratchlocation/$USER/ORCA_${PWD##*/}-${job}__$SLURM_JOB_ID-XX
 # Copy only the necessary stuff in submit directory to scratch directory. Add more here if needed.
 cp  $SLURM_SUBMIT_DIR/$job.inp $tdir/
 cp  $SLURM_SUBMIT_DIR/$job.gbw $tdir/ 2>/dev/null || :
+cp  $SLURM_SUBMIT_DIR/*.cmp $tdir/ 2>/dev/null ||:
+cp  $SLURM_SUBMIT_DIR/*.oldgbw $tdir/ 2>/dev/null || :
+cp  $SLURM_SUBMIT_DIR/*.hess $tdir/ 2>/dev/null || :
 
-# transfers all .xyz files and .allxyz files - might be an overkill in most cases but it is required for restarting NEBs
-cp  $SLURM_SUBMIT_DIR/*xyz $tdir/ 2>/dev/null || :
+# transfers all .xyz files and .allxyz files, except trajectories - might be an overkill in most cases but it is required for restarting NEBs
+# cp  $SLURM_SUBMIT_DIR/*[^trj].xyz $tdir/ 2>/dev/null || :
+find $SLURM_SUBMIT_DIR/ -type f -name "*.xyz" ! -name "*trj*" -exec cp {} $tdir \; >/dev/null || :
+
 
 # Creating nodefile in scratch
 echo $SLURM_NODELIST > $tdir/$job.nodes

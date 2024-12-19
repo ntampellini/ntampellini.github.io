@@ -2,11 +2,11 @@
 options = {
     "level" : "R2SCAN-3C",
     "basis_set" : "",
-    "solvent" : "phcf3",
+    "solvent" : "ch2cl2",
     "step" : 0.02,
 
     "procs" : 16,
-    "mem" : 4, # Memory per core, in GB
+    "mem" : 6, # Memory per core, in GB
     "charge" : 0,
     "maxstep" : 0.1, # in Bohr atomic units (1au = 0.529177 A)
     }
@@ -14,6 +14,7 @@ options = {
 epsilon = {
      "ch2cl2" : 9.04,
      "phcf3" : 9.18,
+     "chloroform" : 4.81,
 }
 ####################################################
 
@@ -23,12 +24,12 @@ from cclib.io import ccread
 from numpy.linalg import norm
 
 if len(sys.argv) == 1:
-    print("\n  Makes an ORCA input file for a distance scan. Syntax:\n\n" +
-          "  python mkorcascan.py filename.xyz i1 i2 target\n\n" + 
-          "  filename.xyz: base name of input geometry file\n" +
-          "  i1/i2: indices of atoms to scan\n" +
-          "  target: desired distance between indices at end of scan.\n"
-        )
+    print(f"\n  Makes an ORCA input file for a distance scan. Syntax:\n\n" +
+           "  python mkorcascan.py filename.xyz i1 i2 target\n\n" + 
+           "  filename.xyz: base name of input geometry file\n" +
+           "  i1/i2: indices of atoms to scan\n" +
+           "  target: desired distance between indices at end of scan.\n"
+           )
     quit()
 
 

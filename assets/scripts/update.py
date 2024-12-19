@@ -16,7 +16,7 @@ def update(name):
     traj = name.split(".")[0] + "_trj.xyz"
     inp = name.split(".")[0] + ".xyz"
 
-    if traj not in done:
+    if name.split(".")[0] not in done:
         
         if traj in os.listdir():
 
@@ -27,13 +27,29 @@ def update(name):
 
             print(f"Updated {inp}")
             
-            done.append(traj)
+            done.append(name.split(".")[0])
             return True
 
         else:
 
-            print(f"Can't find {traj}")
-            return False
+            cmptraj = name.split(".")[0] + "_Compound_1_trj.xyz"
+
+            if cmptraj in os.listdir():
+
+                mol = read_xyz(cmptraj)
+
+                with open(inp, "w") as f:
+                    write_xyz(mol.atomcoords[-1], mol.atomnos, f)
+
+                print(f"Updated {inp}")
+                
+                done.append(name.split(".")[0])
+                return True
+
+            else:
+
+                print(f"Can't find {traj} nor {cmptraj}")
+                return False
 
 if __name__ == "__main__":
 

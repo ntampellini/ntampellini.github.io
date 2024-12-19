@@ -49,7 +49,7 @@ with open("start.xyz", "w") as f:
 
 inpname = "neb.inp"
 
-s = '''! R2SCAN-3c CPCM NEB-TS
+s = f'''! R2SCAN-3c CPCM NEB-TS
 ! Defgrid3
 
 %pal

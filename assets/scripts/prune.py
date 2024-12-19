@@ -4,7 +4,7 @@ import sys
 from firecode.utils import time_to_string, graphize, read_xyz, write_xyz
 from firecode.pruning import prune_by_rmsd, prune_by_rmsd_rot_corr, prune_by_moment_of_inertia
 
-def cl_similarity_refining(coords, atomnos, graph, moi=False, rmsd=True, rmsd_thr=0.25, verbose=False, payload=None):
+def cl_similarity_refining(coords, atomnos, graph, moi=True, rmsd=True, rmsd_thr=0.25, verbose=False, payload=None):
     
         '''
         Removes structures that are too similar to each other (RMSD-based).

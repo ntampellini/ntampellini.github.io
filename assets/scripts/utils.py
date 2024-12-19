@@ -1,8 +1,10 @@
 # Set of utility functions for the scripts at https://ntampellini.github.io/scripts/
 
+import os
+
 import numpy as np
-from periodictable import core, covalent_radius, mass
 from cclib.io import ccread
+from periodictable import core, covalent_radius, mass
 
 for pt_n in range(5):
     try:
@@ -13,38 +15,34 @@ for pt_n in range(5):
         continue
     break
 
-def cycle_to_dihedrals(cycle):
+class suppress_stdout_stderr(object):
     '''
+    A context manager for doing a "deep suppression" of stdout and stderr in 
+    Python, i.e. will suppress all print, even if the print originates in a 
+    compiled C/Fortran sub-function.
+    This will not suppress raised exceptions, since exceptions are printed
+    to stderr just before a script exits, and after the context manager has
+    exited (at least, I think that is why it lets exceptions through).      
+
     '''
-    dihedrals = []
-    for i in range(len(cycle)):
+    def __init__(self):
+        # Open a pair of null files
+        self.null_fds =  [os.open(os.devnull,os.O_RDWR) for x in range(2)]
+        # Save the actual stdout (1) and stderr (2) file descriptors.
+        self.save_fds = [os.dup(1), os.dup(2)]
 
-        a = cycle[i % len(cycle)]
-        b = cycle[(i+1) % len(cycle)]
-        c = cycle[(i+2) % len(cycle)]
-        d = cycle[(i+3) % len(cycle)]
-        dihedrals.append([a, b, c, d])
-    return dihedrals
+    def __enter__(self):
+        # Assign the null pointers to stdout and stderr.
+        os.dup2(self.null_fds[0],1)
+        os.dup2(self.null_fds[1],2)
 
-def get_exocyclic_dihedrals(graph, cycle):
-    '''
-    '''
-    exo_dihs = []
-    for index in cycle:
-        for exo_id in neighbors(graph, index):
-            if exo_id not in cycle:
-                dummy1 = next(i for i in cycle if i not in (exo_id, index) and i in neighbors(graph, index))
-                dummy2 = next(i for i in cycle if i not in (exo_id, index, dummy1) and i in neighbors(graph, dummy1))
-                exo_dihs.append([exo_id, index, dummy1, dummy2])
-
-    return exo_dihs 
-
-def neighbors(graph, index):
-    # neighbors = list([(a, b) for a, b in graph.adjacency()][index][1].keys())
-    neighbors = list(graph.neighbors(index))
-    if index in neighbors:
-        neighbors.remove(index)
-    return neighbors
+    def __exit__(self, *_):
+        # Re-assign the real stdout/stderr back to (1) and (2)
+        os.dup2(self.save_fds[0],1)
+        os.dup2(self.save_fds[1],2)
+        # Close all file descriptors
+        for fd in self.null_fds + self.save_fds:
+            os.close(fd)
 
 def dihedral(p):
     '''
@@ -87,6 +85,33 @@ def norm_of(vec):
     only compatible with 3D vectors.
     '''
     return ((vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]))**0.5
+
+def vec_angle(v1, v2):
+    v1_u = norm(v1)
+    v2_u = norm(v2)
+    return np.arccos(clip(np.dot(v1_u, v2_u), -1.0, 1.0))*180/np.pi
+
+def clip(n, lower, higher):
+    '''
+    jittable version of np.clip for single values
+    '''
+    if n > higher:
+        return higher
+    elif n < lower:
+        return lower
+    else:
+        return n
+
+def point_angle(p1, p2, p3):
+    return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi
+
+def norm(vec):
+    '''
+    Returns the normalized vector.
+    Reasonably faster than Numpy version.
+    Only for 3D vectors.
+    '''
+    return vec / np.sqrt((vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]))
 
 def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
     '''
