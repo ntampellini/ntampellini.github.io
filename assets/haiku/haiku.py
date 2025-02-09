@@ -9,7 +9,8 @@ from js import window
 from time import perf_counter
 
 # Set up a CORS proxy URL
-cors_proxy_url = "https://corsproxy.io/?"
+# cors_proxy_url = "https://corsproxy.io/?"
+cors_proxy_url = "https://corsproxy.io/?url="
 # cors_proxy_url = "http://api.allorigins.win/get?url="
 
 async def get_random_chemrxiv_paper():
