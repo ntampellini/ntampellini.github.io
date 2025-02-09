@@ -1,0 +1,48 @@
+#  Define variables
+variable method1 = "R2SCAN-3c";
+variable method2 = "wB97M-V def2-TZVPP";
+variable solvent = "acetonitrile";
+
+# Declare other variables
+variable method1_EE, method1_G, method1_Gcorr;
+variable method1_H, method1_Hcorr;
+variable method2_EE, method2_compositeG, method2_compositeH;
+
+# Perform opt+freq at method1 level
+New_Step
+  ! &{method1} Opt TightOpt Defgrid3 Freq CPCM(&{solvent})
+Step_End
+Alias_Step m1
+
+
+read method1_EE = DFT_TOTAL_EN[m1];
+read method1_G = THERMO_FREE_ENERGY_G[m1];
+read method1_H = THERMO_ENTHALPY_H[m1];
+
+method1_Gcorr = method1_G - method1_EE;
+method1_Hcorr = method1_H - method1_EE;
+
+# Perform sp at method2 level
+New_Step
+  ! &{method2} Defgrid3
+
+  %cpcm smd true
+    SMDsolvent "&{solvent}"
+  end
+
+Step_End
+Alias_Step m2
+
+read method2_EE = DFT_TOTAL_EN[m2];
+
+method2_compositeG = method2_EE + method1_Gcorr;
+method2_compositeH = method2_EE + method1_Hcorr;
+
+print("--> Composite G (Eh)  %16.12lf \n", method2_compositeG);
+print("--> Composite H (Eh)  %16.12lf \n", method2_compositeH);
+print("\n");
+print("--> %6s Gcorr (Eh)  %16.12lf \n", method1, method1_Gcorr);
+print("--> %6s Hcorr (Eh)  %16.12lf \n", method1, method1_Hcorr);
+print("--> %6s EE    (Eh)  %16.12lf \n", method2, method2_EE);
+
+end

@@ -3,7 +3,7 @@ hourly_rate = 0.004 # $/(h*core)
 
 options = {
     "solvent" : "chloroform",
-    "solvent_model" : 'CPCM',
+    "solvent_model" : 'CPCM', # CPCM, SMD, ALPB
     "level" : "R2SCAN-3c",
     "basis_set" : "",
     "opt": "",
@@ -12,13 +12,15 @@ options = {
     "procs" : 16,
     "mem" : 6, # Memory per core, in GB
     "charge" : 0,
-    "maxstep" : 0.05, # in Bohr atomic units (1au = 0.529177 A)
+    "maxstep" : 0.3, # in au, i.e. Bohr atomic units (1au = 0.529177 A) - default is 0.3 au
     "popt" : False,
     "compound" : False,
     "compound_job_scriptname" : "optf+sp.cmp",
+    "comp_job_extra_variables" : "",
     "hh" : False, # hybrid hessian
 
-    "additional_kw" : "Defgrid3",
+    "additional_kw" : "",
+    "constr_block" : "",
     "extra_block" : "",
     }
 
@@ -60,6 +62,8 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
 from utils import norm_of, pt, read_xyz, suppress_stdout_stderr, point_angle, dihedral
+from rich.traceback import install
+install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
 def inquirer_set_options(args):
     '''
@@ -71,14 +75,15 @@ def inquirer_set_options(args):
     runtype = inquirer.select(
         message="Which kind of input file would you like to generate?",
         choices=(
-            Choice(value='fastsp',   name='fastsp   - Low-level DFT single-point energy calculation.'),
             Choice(value='sp',       name='sp       - High-level DFT single-point energy calculation.'),
-            Choice(value='optf',     name='optf     - Geom. optimization + frequency calculation.'),
+            Choice(value='optf',     name='opt(f)   - Geom. optimization (+ frequency calculation).'),
             Choice(value='popt',     name='popt     - Partial optimization (specify constraints).'),
             Choice(value='ts',       name='ts       - Saddle optimization + frequency calculation.'),
-            Choice(value='scan',     name='scan     - Perform a distance/angle/dihedral scan.'),
-            Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
+            Choice(value='goat',     name='goat     - Conformational search via GOAT.'),
             Choice(value='compound', name='compound - Choose a compound method routine.'),
+            Choice(value='scan',     name='scan     - Perform a distance/angle/dihedral scan.'),
+            Choice(value='fastsp',   name='fastsp   - Low-level DFT single-point energy calculation.'),
+            Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
             Choice(value='irc',      name='irc      - Intrinsic reaction coordinate calculation.'),
             Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
         ),
@@ -88,14 +93,29 @@ def inquirer_set_options(args):
     # modify the option on the args namespace
     setattr(args, runtype, True)
 
-    # set or confirm solvent
-    options["solvent"] = inquirer.fuzzy(
-        message=f"Current solvent is {options['solvent']}. Press enter to confirm or type another solvent:",
-        choices=epsilon_dict.keys(),
-        default=options["solvent"],
-        # validate=lambda result: result in epsilon_dict,
-        # invalid_message="Solvent not recognized."
-    ).execute()
+    if not args.compound:
+        # set solvent model
+        options["solvent_model"] = inquirer.select(
+            message=f"What solvation model would you like to use?",
+            choices=(
+                Choice(value=None, name='vacuum'),
+                Choice(value='CPCM', name='CPCM'),
+                Choice(value='SMD', name='SMD'),
+            ),
+            default='SMD' if args.sp else 'CPCM',
+            # validate=lambda result: result in epsilon_dict,
+            # invalid_message="Solvent not recognized."
+        ).execute()
+
+    if options["solvent_model"] is not None or args.compound:
+        # set or confirm solvent
+        options["solvent"] = inquirer.fuzzy(
+            message=f"Current solvent is {options['solvent']}. Press enter to confirm or type another solvent:",
+            choices=epsilon_dict.keys(),
+            default=options["solvent"],
+            # validate=lambda result: result in epsilon_dict,
+            # invalid_message="Solvent not recognized."
+        ).execute()
 
 def get_comp_script_inp(rootname):
     return f'''* xyzfile {options["charge"]} 1 {rootname}.xyz
@@ -110,21 +130,26 @@ end
   MaxStep {options["maxstep"]}
 end
 
-%compound "optf+sp.cmp"
+%compound "{options["compound_job_scriptname"]}"
   with
     solvent = "{options["solvent"]}";
+{options["comp_job_extra_variables"]}
 end
 
 '''
 
-def get_cpcm_block(solvent, solvent_model):
+def get_solvent_block(solvent, solvent_model):
+
+    if solvent_model == 'ALPB':
+        return ""
+
     s = '%cpcm\n'
     if solvent_model == 'CPCM':
-        s += f"  epsilon {epsilon_dict[options['solvent']]}\n"
+        s += f"  epsilon {epsilon_dict[solvent]}\n"
     elif solvent_model == 'SMD':
-        s += f"  smd True\n  SMDsolvent \"{options['solvent']}\"\n"
+        s += f"  smd True\n  SMDsolvent \"{solvent}\"\n"
     else:
-        raise Exception(f'Solvent model \"{solvent_model}\" not recognized (use CPCM or SMD)')
+        raise Exception(f'Solvent model \"{solvent_model}\" not recognized (use CPCM, SMD or ALPB)')
 
     s += "end"
 
@@ -139,7 +164,13 @@ def get_inp(rootname, opt=True):
 
     geom_block = f'%geom\n\n  {maxstep_line}\n\n  {hess_line}\n\nend' if opt else ""
 
-    inp = f'''! {options["level"]} {options["basis_set"]} {"CPCM" if options["solvent_model"] == "CPCM" else ""} {options["opt"]}
+    solvent_keyword = {
+        'ALPB' : f"ALPB({options['solvent']})",
+        'CPCM' : 'CPCM',
+        'SMD' : "",
+    }[options['solvent_model']]
+
+    inp = f'''! {options["level"]} {options["basis_set"]} {solvent_keyword} {options["opt"]}
 ! {options["additional_kw"]}
 
 %pal
@@ -150,11 +181,11 @@ end
 
 {geom_block}
 
-{get_cpcm_block(options["solvent"], options["solvent_model"])}
+{get_solvent_block(options["solvent"], options["solvent_model"])}
 
 {f"%freq temp {options['temp']} end" if options["freq"] else ""}
-
-{options["extra_block"]}
+{options["constr_block"]}
+{options["extra_block"].replace('$ROOTNAME', rootname)}
 
 * xyzfile {options["charge"]} 1 {rootname}.xyz
 
@@ -251,6 +282,10 @@ def get_procs(rootname):
     '''
     
     '''
+
+    if args.goat:
+        return 48
+
     natoms = float(getoutput(f'head {rootname}.xyz').split('\n')[0])
     
     if natoms < 100:
@@ -293,97 +328,7 @@ def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
         
     return est_d
 
-############################################################# START OF LOGIC
-
-# usage = (
-#     "\n  Makes one or more ORCA inputs following the desired specifications. Syntax:\n\n" +
-#     "  python mkorca.py conf*.xyz [option]\n\n" + 
-#     "  conf*.xyz: base name of input geometry file(s)\n" +
-#     "  option:\n" +
-#     "    sp:     single-point energy calculation.\n" +
-#     "    fastsp: fast single-point energy calculation.\n" +
-#     "    optf:   optimization + frequency calculation.\n" +
-#     "    popt:   partial optimization (specify distance/angle/dihedral constraints).\n" +
-#     "    ts:     eigenvector-following saddle point optimization.\n" +
-#     "    nmr:    single-point energy calculation with NMR shieldings.\n" + 
-#     "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
-# )
-
-parser = argparse.ArgumentParser() 
-parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
-parser.add_argument("-solvent", help="Set solvent to the specified one.", action="store", required=False)
-parser.add_argument("-sp", help="Set input type to SP.", action="store_true", required=False)
-parser.add_argument("-fastsp", help="Set input type to fast SP.", action="store_true", required=False)
-parser.add_argument("-ts", help="Set input type to TS.", action="store_true", required=False)
-parser.add_argument("-hh", help="Specify the use of a hybrid hessian.", action="store_true", required=False)
-parser.add_argument("-optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
-parser.add_argument("-popt",help="Set input type to partial optimization.", action="store_true", required=False)
-parser.add_argument("-scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
-parser.add_argument("-nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
-parser.add_argument("-compound", help="Set input type to a compound method.", action="store_true", required=False)
-parser.add_argument("-irc", help="Set input type to IRC.", action="store_true", required=False)
-parser.add_argument("-priority", help="Run jobs with priority (and estimate cost)", action="store_true", required=False)
-args = parser.parse_args()
-
-if not args.inputfiles:
-    raise Exception('No input structures selected. Please specify at least one.')
-
-if not any((args.sp, args.fastsp, args.ts, args.optf, args.popt, args.scan, args.nmr, args.compound, args.irc)):
-    inquirer_set_options(args)
-
-if args.solvent:
-    print(f"--> Setting solvent to {options['solvent']}")
-
-if args.sp:
-    options["opt"] = ""
-    options["freq"] = False
-    options["level"] = 'wB97M-V'
-    options["basis_set"] = 'def2-TZVPP'
-    options["solvent_model"] = 'SMD'
-
-if args.fastsp:
-    options["opt"] = ""
-    options["freq"] = False
-    options["level"] = 'R2SCAN-3c'
-    options["basis_set"] = ''
-
-if args.ts:
-    options["opt"] = "OptTS"
-    options["mem"] = 8
-    options["freq"] = True
-    options["additional_kw"] += " TightOpt LARGEPRINT"
-
-if args.hh:
-   
-    hh_ids = input("Hybrid Hessian: provide indices involved in TS: ")
-
-    if hh_ids == "":
-        popt_inp_name = args.inputfiles[0].split('.')[0] + '.inp'
-        if popt_inp_name in os.listdir(os.path.dirname(os.getcwd())):
-            popt_ids = getoutput(f'grep {{*}} ../{popt_inp_name}')
-            popt_ids = ' '.join(re.findall(r'(?<!\.)\b\d+\b(?!\.)', popt_ids))
-            popt_ids = ' '.join({i for i in popt_ids.split()})
-            ans = input(f"Would you like to use indices from the previous popt? [{popt_ids}] [y]/n")
-            if ans in ('y', 'Y', ''):
-                hh_ids = popt_ids
-
-            else:
-                print('Please specify hybrid hessian-excluded indices.')
-                sys.exit()
-        else:
-            print('Please specify hybrid hessian-excluded indices.')
-            sys.exit()
-
-if args.optf:
-    options["opt"] = "Opt"
-    options["freq"] = True
-    options["additional_kw"] += " TightOpt LARGEPRINT"
-
-if args.popt:
-    options["freq"] = False
-    options["opt"] = "Opt"
-    options["popt"] = True
-    # options["additional_kw"] += " TightOpt LARGEPRINT"
+def inquire_constraints():
 
     constraint_strings = []
     while True:
@@ -415,26 +360,287 @@ if args.popt:
 
         constraint_strings.append((c_type, c_string))
 
-    options["extra_block"] = "%geom Constraints\n"
+    options["constr_block"] += "%geom Constraints\n"
     for c_type, c_string in constraint_strings:
-        options["extra_block"] += "  {{ {0} {1} C }}\n".format(c_type, c_string)
+        options["constr_block"] += "  {{ {0} {1} C }}\n".format(c_type, c_string)
         
-    options["extra_block"] += "  end\nend"
+    options["constr_block"] += "  end\nend"
+
+def inquire_ts_mode_following(default=""):
+
+    letter_dict = {
+        2 : "B",
+        3 : "A",
+        4 : "D",
+    }
+
+    choices = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
+
+    if choices:
+
+        if inquirer.confirm(message=("Would you like the saddle opt. to follow the constrained "
+                            f"coordinates from the previous popt?"), default=True).execute():
+
+            popt_ids = inquirer.select(
+                message="Select the constraint to follow:",
+                choices=choices).execute()
+            
+            letter = letter_dict[len(popt_ids.split())]
+            options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
+            return
+        
+    manual_ids = inquirer.text(
+        message=("Would you like the saddle opt. to follow a specific internal coordinate? "
+                f"If so, type the indices of the bond/angle/dihedral to follow."),
+        default=default,
+        ).execute()
+    
+    if manual_ids:
+        popt_ids = manual_ids.rstrip().strip()
+        letter = letter_dict[len(popt_ids.split())]
+        options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
+
+def get_prev_popt_constr_ids(rootname):
+    '''
+    Looks in the parent folder for constraints in an ORCA .inp file.,
+    and returns them as a list of InquirerPy Choices.
+
+    '''
+    choices = []
+
+    popt_inp_name = rootname + '.inp'
+    if popt_inp_name in os.listdir(os.path.dirname(os.getcwd())):
+        popt_ids_lines = getoutput(f'grep {{*}} ../{popt_inp_name}')
+
+        for line in popt_ids_lines.split("\n"):
+            popt_ids = ' '.join(re.findall(r'(?<!\.)\b\d+\b(?!\.)', line))
+            popt_ids = ' '.join({i for i in popt_ids.split()})
+
+            line += ' - '
+            for index in popt_ids.split():
+                elem = getoutput(f'sed "{3+int(index)}q;d" {rootname}.xyz').split()[0]
+                line += f'{elem}({index})-'
+            line = line[:-1]
+            choices.append(Choice(value=popt_ids, name=line))
+        
+        return choices
+
+def get_goat_block():
+
+    s = "%goat\n"
+
+    if options["level"] == "GFN2-XTB":
+        s += "    GFNUPHILL GFNFF\n"
+
+    s += "    MAXEN 6.0\n"
+    s += "end\n\n"
+
+    return s
+
+def inquire_level(default='wB97M-V'):
+
+    options["level"] = inquirer.select(
+            message="Which level of theory would you like to use?:",
+            choices=(
+                Choice(value='B3LYP D3BJ', name='B3LYP-D3(BJ) - GGA           ★★★☆☆'),
+                Choice(value='PBE0',       name='PBE0         - GGA           ★★★☆☆'),
+                Choice(value='R2SCAN-3c',  name='R²SCAN-3c    - (composite)   ★★★☆☆'),
+                Choice(value='wB97X-V',    name='ωB97X-V      - GGA           ★★★★☆'),
+                Choice(value='wB97X-D4',   name='ωB97X-D4     - GGA           ★★★★☆'),
+                Choice(value='wB97M-V',    name='ωB97M-V      - Meta-GGA      ★★★★☆'),
+                Choice(value='M062X',      name='M06-2X       - Meta-GGA      ★★★★☆'),
+                Choice(value='wB97M(2)',   name='ωB97M(2)     - Double Hybrid ★★★★★ - (will copy .gbw from parent folder if not in current)'),
+            ),
+            default=default,
+        ).execute()
+
+def set_auto_solvent():
+    '''
+    Modifies the options["solvent"] value to the most popular
+    if input files are found the current folder.
+    
+    '''
+
+    solvent_list = []
+
+    # look for CPCM solvents via epsilon
+    try:
+ 
+        epsilons = [float(line.split()[1]) for line in getoutput('grep epsilon *.inp -h').split('\n')]
+        for e in epsilons:
+            solvent_list.append(
+                next(key for key, value in epsilon_dict.items() if value == e)
+            )
+    except (IndexError, ValueError, StopIteration):
+        pass
+
+    # look for SMD solvents
+    try:
+        for line in getoutput('grep SMDsolvent *.inp -h').split('\n'):
+            solvent = line.split()[1].lstrip('\"').rstrip('\"')
+            if solvent in epsilon_dict.keys():
+                solvent_list.append(solvent)
+        
+    except (IndexError, ValueError, StopIteration):
+        pass
+
+    # look for solvents in compound jobs
+    try:
+        for line in getoutput('grep solvent *.inp -h').split('\n'):
+            solvent = line.split()[2].rstrip(";").lstrip('\"').rstrip('\"')
+            if solvent in epsilon_dict.keys():
+                solvent_list.append(solvent)
+        
+    except (IndexError, ValueError, StopIteration):
+        pass
+
+    if not solvent_list:
+        return
+
+    options["solvent"] = sorted([(n, solvent_list.count(n)) for n in set(solvent_list)], key=lambda x: x[1], reverse=True)[0][0]
+
+############################################################# START OF LOGIC
+
+# usage = (
+#     "\n  Makes one or more ORCA inputs following the desired specifications. Syntax:\n\n" +
+#     "  python mkorca.py conf*.xyz [option]\n\n" + 
+#     "  conf*.xyz: base name of input geometry file(s)\n" +
+#     "  option:\n" +
+#     "    sp:     single-point energy calculation.\n" +
+#     "    fastsp: fast single-point energy calculation.\n" +
+#     "    optf:   optimization + frequency calculation.\n" +
+#     "    popt:   partial optimization (specify distance/angle/dihedral constraints).\n" +
+#     "    ts:     eigenvector-following saddle point optimization.\n" +
+#     "    nmr:    single-point energy calculation with NMR shieldings.\n" + 
+#     "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
+# )
+
+parser = argparse.ArgumentParser() 
+parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
+parser.add_argument("-solvent", help="Set solvent to the specified one.", action="store", required=False)
+parser.add_argument("-sp", help="Set input type to SP.", action="store_true", required=False)
+parser.add_argument("-fastsp", help="Set input type to fast SP.", action="store_true", required=False)
+parser.add_argument("-ts", help="Set input type to TS.", action="store_true", required=False)
+parser.add_argument("-hh", help="Specify the use of a hybrid hessian.", action="store_true", required=False)
+parser.add_argument("-optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
+parser.add_argument("-popt",help="Set input type to partial optimization.", action="store_true", required=False)
+parser.add_argument("-scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
+parser.add_argument("-nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
+parser.add_argument("-compound", help="Set input type to a compound method.", action="store_true", required=False)
+parser.add_argument("-irc", help="Set input type to IRC.", action="store_true", required=False)
+parser.add_argument("-priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
+parser.add_argument("-goat", help="Conformational search via GOAT.", action="store_true", required=False)
+args = parser.parse_args()
+
+if not args.inputfiles:
+    raise Exception('No input structures selected. Please specify at least one.')
+
+set_auto_solvent()
+
+if not any((args.sp,
+            args.fastsp,
+            args.ts,
+            args.optf,
+            args.popt,
+            args.scan,
+            args.nmr,
+            args.compound,
+            args.irc,
+            args.goat)):
+    inquirer_set_options(args)
+
+if args.solvent:
+    print(f"--> Setting solvent to {options['solvent']}")
+
+if args.sp:
+
+    inquire_level()
+
+    options["opt"] = ""
+    options["freq"] = False
+    options["basis_set"] = 'def2-TZVPP'
+    # options["solvent_model"] = 'SMD'
+    options["additional_kw"] += " Defgrid3"
+
+    if options["level"] == 'wB97M(2)':
+        options["additional_kw"] += " SCNL NoFrozenCore def2-TZVPP/C CALCGUESSENERGY NOITER"
+        options["extra_block"] += "%scf\n  Guess MORead\n  MOInp \"$ROOTNAME.gbw\"\nend"
+
+if args.fastsp:
+    options["opt"] = ""
+    options["freq"] = False
+    options["level"] = 'R2SCAN-3c'
+    options["basis_set"] = ''
+    options["additional_kw"] += " Defgrid3"
+
+if args.ts:
+    options["opt"] = "OptTS"
+    options["mem"] = 8
+    options["freq"] = True
+    options["additional_kw"] += " TightOpt LARGEPRINT Defgrid3"
+
+    inquire_ts_mode_following()
+
+if args.hh:
+   
+    hh_ids = input("Hybrid Hessian: provide indices involved in TS: ")
+
+    if hh_ids == "":
+
+        popt_ids = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
+        
+        if popt_ids:
+            if inquirer.confirm(f"Would you like to use indices from the previous popt? [{popt_ids}]", default=True):
+                hh_ids = popt_ids
+
+            else:
+                print('Please specify hybrid hessian-excluded indices.')
+                sys.exit()
+        else:
+            print('Please specify hybrid hessian-excluded indices.')
+            sys.exit()
+
+if args.optf:
+    options["opt"] = "Opt"
+
+    options["freq"] = inquirer.confirm(message='Run frequency calculation?', default=False).execute()
+    if inquirer.confirm(message='LARGEPRINT? (writes orbital information to .out)', default=False).execute():
+        options["additional_kw"] += " LARGEPRINT"
+    options["additional_kw"] += " TightOpt Defgrid3"
+
+if args.popt:
+    options["freq"] = False
+    options["opt"] = "Opt"
+    options["popt"] = True
+    options["additional_kw"] += " Defgrid3"
+
+    inquire_constraints()
 
 if args.scan:
     options["opt"] = "Opt"
 
     # make scan %geom block and add it to the extra block
-    options["extra_block"] += get_scan_block(args.inputfiles[0])
+    options["constr_block"] += get_scan_block(args.inputfiles[0])
 
 if args.nmr:
     options["freq"] = False
     options["opt"] = ""
     options["level"] = 'PBE0'
     options["basis_set"] = '6-311+G(2d,p)'
-    options["additional_kw"] += " NMR"
+    options["additional_kw"] += " NMR Defgrid3"
 
 if args.compound:
+
+    options["opt"] = True
+    options["compound_job_scriptname"] = inquirer.select(
+        message='What compound script would you like to run?',
+        choices=(
+            Choice(value="optf+sp.cmp", name='optf+sp.cmp - Unconstrained opt., freq. calc., single point energy calc.'),
+            Choice(value="popt+saddle+sp.cmp", name='popt+saddle+sp.cmp  - Constrained opt., saddle point opt., freq. calc., single point energy calc.'),
+        ),
+        default="optf+sp.cmp",
+    ).execute()
+
     try:
         script_folder = os.path.dirname(os.path.realpath(__file__))
         source = os.path.join(script_folder, options["compound_job_scriptname"])
@@ -442,42 +648,96 @@ if args.compound:
         print(f'--> Copied {options["compound_job_scriptname"]} to input file folder.')
     except Exception:
         raise Exception(f'Something went wrong when copying {options["compound_job_scriptname"]} to the destination folder.')
+    
+    if options["compound_job_scriptname"] == "popt+saddle+sp.cmp":
+        inquire_constraints()
+        inquire_ts_mode_following()
+        options["comp_job_extra_variables"] = f'    extra_block_1 = \"{options["constr_block"]}\";\n    extra_block_2 = \"{options["extra_block"]}\";\n'
+        options["freq"] = True
 
 if args.irc:
     options["freq"] = True
-    options["additional_kw"] += " IRC"
+    options["additional_kw"] += " IRC Defgrid3"
     options["opt"] = ""
 
+if args.goat:
+
+    options["level"] = inquirer.select(
+            message="What level of theory would you like to use?",
+            choices=(
+                Choice(value='GFN-FF', name='GFN-FF'),
+                Choice(value='GFN2-XTB', name='GFN2-XTB (will still request GFN-FF for the uphill steps)'),
+            ),
+            default='GFN-FF',
+        ).execute()
+
+    options["opt"] = ""
+    options["additional_kw"] += " GOAT"
+    options['solvent_model'] = 'ALPB'
+    options["extra_block"] += get_goat_block()
+
+    if inquirer.confirm(
+                message="Do you wish to specify any constraint?",
+                default=False,
+            ).execute():
+        inquire_constraints()
+
+# Make sure to add Freq for appropriate calculations if we have not already
 if options["freq"] and "Freq" not in options["additional_kw"]:
     options["additional_kw"] += " Freq"
 
+# Inquire about automatic charges based on file names
+allchars = ''.join(args.inputfiles)
+auto_charges = False
+if '+' in allchars or '-' in allchars:
+    auto_charges = inquirer.confirm(
+        message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
+        default=False,
+    ).execute()
+
+# print options
 print()
 for option, value in options.items():
    if value != "":
        print(f"--> {option} = {value}")
 print()
 
-allchars = ''.join(args.inputfiles)
-auto_charges = False
-if '+' in allchars or '-' in allchars:
-    auto_charges = inquirer.confirm(
-        message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
-        default=True,
-    ).execute()
-
+# calculate processors to use for each job and ask if user wants to override
 procs_list = [get_procs(filename.split('.')[0]) for filename in args.inputfiles]
-cum_cost = 0
+cum_cost, cum_cpu, cum_mem = 0, 0, 0
+if newprocs := inquirer.text(
+        message=f'Automatic number of cores is {procs_list[0]}. Type a different number to override or enter to confirm.'
+            ).execute():
+    procs_list = [int(newprocs) for _ in procs_list]
 
-print(f'Filename                       Cores  Mem(GB)  Max cost (24h)')
-print('-------------------------------------------------------------')
+# make sure we have all the required files for the job in the submission folder
+if options["level"] == 'wB97M(2)':
+    for filename in args.inputfiles:
+        wfn = filename[:-4]+".gbw"
+        if not wfn in os.listdir():
+            parent = os.path.dirname(os.getcwd())
+            if wfn in os.listdir(parent):
+                source = os.path.join(parent, wfn)
+                target = os.path.join(os.getcwd(), wfn)
+                shutil.copyfile(source, target)
+                print(f'--> Copied {wfn} from parent folder to current folder.')
+            else:
+                raise Exception(f'Could not find {wfn} file in current nor parent folder.')
 
-for filename, procs in zip(args.inputfiles, procs_list):
+
+# start printing job table
+print(f'#    Filename                       Cores  Mem(GB)  Max cost (24h)')
+print( '------------------------------------------------------------------')
+
+for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
     rootname = filename.split('.')[0]
     options["procs"] = procs
     cost = get_daily_cost(procs, mem_per_core=options["mem"])
     cum_cost += cost
+    cum_cpu += procs
+    cum_mem += options["mem"] * procs
 
-    print(f'{filename:30s} {procs:2}     {options["mem"]*procs:d}       {cost:.2f} $')
+    print(f'{str(f):>3}  {filename:30s} {procs:2}     {options["mem"]*procs:d}       {cost:.2f} $')
 
     if auto_charges:
         if '+' in rootname:
@@ -486,6 +746,9 @@ for filename, procs in zip(args.inputfiles, procs_list):
         elif '-' in rootname:
             options['charge'] = -1
             print(f'--> {filename} : assigned charge -1 based on input name')
+        else:
+            options['charge'] = 0
+            print(f'--> {filename} : assigned charge 0 based on input name')
 
     if args.compound:
         s = get_comp_script_inp(rootname)
@@ -504,8 +767,8 @@ for filename, procs in zip(args.inputfiles, procs_list):
     except FileNotFoundError:
         pass
 
-print('-------------------------------------------------------------')
-print(f'Maximum estimated cost (24 h runtime): {cum_cost:.2f} $\n')
+print( '------------------------------------------------------------------')
+print(f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n')
 
 run_jobs = inquirer.confirm(
         message="Run jobs for the newly generated input files?",

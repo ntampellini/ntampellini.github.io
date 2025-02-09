@@ -9,30 +9,12 @@ from InquirerPy import inquirer
 
 # setting ids for the key atoms
 
-
-#bzh_arm
-# key_atom = 107
-# sub1 = 106
-# sub2 = 108
-# sub3 = 119
-
-#anth
-# key_atom = 104
-# sub1 = 103
-# sub2 = 105
-# sub3 = 116
-
-#tBuNHCO
-# key_atom = 97
-# sub1 = 96
-# sub2 = 98
-# sub3 = 109
-
 indices_dict = {
     "bzh_arm" : (107, 106, 108, 119),
     "anth" : (104, 103, 105, 116),
     "tBuNHCO" : (97, 96, 98, 109),
     "dPhg" : (102, 101, 103, 114),
+    "homoBzh" : (102, 103, 114, 101),
 }
 
 set_name = inquirer.select(
@@ -71,7 +53,7 @@ if __name__ == '__main__':
         thr = next((kw.split("=")[-1] for kw in sys.argv if "thr=" in kw))
         sys.argv.remove(f"thr={thr}")
 
-    print('\n--> Chirality script')
+    print('\n--> Absolute configuration reader script')
     print(f'  key: {key_atom}')
     print(f'  s1: {sub1}')
     print(f'  s2: {sub2}')

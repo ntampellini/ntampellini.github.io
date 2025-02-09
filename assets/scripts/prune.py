@@ -19,7 +19,7 @@ def cl_similarity_refining(coords, atomnos, graph, moi=True, rmsd=True, rmsd_thr
 
         if moi:
 
-            if len(coords) <= 500:
+            if len(coords) <= 5E5:
 
                 ### Prune based on the moment of inertia
 

@@ -26,12 +26,12 @@ from firecode.utils import read_xyz, time_to_string, write_xyz, Constraint
 
 if len(sys.argv) == 1:
     print("\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
-          "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c] [charge=n]\n\n" + 
+          "  python xtbopt.py filename*.xyz [newfile] [ff] [sp] [c[=file.txt]] [charge=n] [flat] [flat=]\n\n" + 
           "  filename*.xyz: Base name of input geometry file(s)\n" +
           "  newfile: Optional, creates a new file, preserving the original\n" +
           "  ff: Optional, use GFN-FF instead of GFN2-XTB\n" +
           "  sp: Optional, do not optimize but just run a single point energy calculation\n" +
-          "  c: Optional, specify one or more distance/dihedral constraints to be imposed\n" +
+          "  c: Optional, specify one or more distance/dihedral constraints to be imposed, or read from file\n" +
           "  charge=n: Optional, where \"n\" is an integer. Specify the charge to be passed to XTB\n"
         )
     quit()
@@ -45,6 +45,7 @@ constraints, distances = [], []
 newfile = False
 add_free_energy = False
 aimnet2 = False
+smarts_string = None
 
 if "solvent" in [kw.split('=')[0] for kw in sys.argv]:
 
@@ -134,6 +135,7 @@ if "c" in sys.argv:
 
     print(f"Specified {len(constraints)} constraints")
 
+# constraint file
 if "c" in [kw.split("=")[0] for kw in sys.argv]:
     c_filename = next((kw.split("=")[-1] for kw in sys.argv if "c=" in kw))
     sys.argv.remove(f"c={c_filename}")
@@ -141,6 +143,11 @@ if "c" in [kw.split("=")[0] for kw in sys.argv]:
     # set constraints from file
     with open(c_filename, 'r') as f:
         lines = f.readlines()
+
+    # see if we are pattern matching
+    if lines[0].startswith('SMARTS'):
+        smarts_string = lines.pop(0).lstrip('SMARTS ')
+        print(f'--> SMARTS line found: will pattern match and interpret constrained indices relative to the pattern')
 
     for line in lines:
         data = line.split()
@@ -199,129 +206,175 @@ else:
     for name in sys.argv[1:]:
         names.append(name)
 
-energies, names_confs, constrained_indices, constrained_distances, constrained_dihedrals, constrained_dih_angles = [], [], [], [], [], []
-constrained_angles_indices, constrained_angles_values = [], []
+energies, names_confs = [], []
 
 for i, name in enumerate(names):
-    data = read_xyz(name)
+    try:
+        data = read_xyz(name)
 
-    print()
+        print()
 
-    outname = name if not newfile else name[:-4] + "_xtbopt.xyz"
-    if newfile and (outname in os.listdir()):
-        os.remove(outname)
-    write_type = 'a' if newfile else 'w'
+        outname = name if not newfile else name[:-4] + "_xtbopt.xyz"
+        if newfile and (outname in os.listdir()):
+            os.remove(outname)
+        write_type = 'a' if newfile else 'w'
 
-    for c_n, coords in enumerate(data.atomcoords):
+        for c_n, coords in enumerate(data.atomcoords):
+
+            constrained_indices, constrained_distances, constrained_dihedrals, constrained_dih_angles = [], [], [], []
+            constrained_angles_indices, constrained_angles_values = [], []
+
+            for constraint in constraints:
+
+                if smarts_string is not None:
+                    # save original indices to revert them later, for the next conformer/molecule
+                    constraint.old_indices = constraint.indices[:]
+
+                    # correct indices from relative to the SMARTS
+                    # string to absolute for this molecule
+                    constraint.convert_constraint_with_smarts(coords, data.atomnos, smarts_string)
+                    
+                if constraint.type == 'B':
+
+                    a, b = constraint.indices
+                    if constraint.value is None:
+                        constraint.value = norm_of(coords[a]-coords[b])
+
+                    constrained_indices.append(constraint.indices)
+                    constrained_distances.append(constraint.value)
+
+                    print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A at start of optimization (target is {round(constraint.value, 3)} A)")
+
+                elif constraint.type == 'A':
+
+                    a, b, c = constraint.indices
+                    if constraint.value is None:
+                        constraint.value = point_angle(coords[a],coords[b],coords[c])
+
+                    constrained_angles_indices.append(constraint.indices)
+                    constrained_angles_values.append(constraint.value)
+                    
+                    print(f"CONSTRAIN ANGLE -> Angle({a}-{b}-{c}) = {round(point_angle(coords[a],coords[b],coords[c]), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
+
+                elif constraint.type == 'D':
+                    
+                    a, b, c, d = constraint.indices
+                    if constraint.value is None:
+                        constraint.value = dihedral(np.array([coords[a],coords[b],coords[c], coords[d]]))
+
+                    constrained_dihedrals.append(constraint.indices)
+                    constrained_dih_angles.append(constraint.value)
+
+                    print(f"CONSTRAIN DIHEDRAL -> Dih({a}-{b}-{c}-{d}) = {round(dihedral(np.array([coords[a],coords[b],coords[c], coords[d]])), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
+            
+            action = "Optimizing" if options["opt"] else "Calculating SP energy on"
+            for method in options["method"]:
+                print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
+                t_start = perf_counter()
+
+                if aimnet2:
+
+                    coords, energy, success = aimnet2_opt(
+                                                            coords,
+                                                            data.atomnos,
+
+                                                            constrained_indices=constrained_indices,
+                                                            constrained_distances=constrained_distances,
+
+                                                            constrained_angles_indices=constrained_angles_indices,
+                                                            constrained_angles_values=constrained_angles_values,
+
+                                                            constrained_dihedrals_indices=constrained_dihedrals,
+                                                            constrained_dihedrals_values=constrained_dih_angles,
+
+                                                            ase_calc=calc,
+                                                            traj=name[:-4] + "_traj",
+                                                            logfunction=print,
+                                                            charge=options["charge"],
+                                                            maxiter=500 if options["opt"] else 1,
+
+                                                            # title='XTBOPT_temp',
+                                                            # debug=True,
+                                                        )
+                    
+                    if options["solvent"] is not None:
+                        gsolv = xtb_gsolv(
+                                            coords,
+                                            data.atomnos,
+                                            charge=options['charge'],
+                                            solvent=options['solvent'],
+                                        )
+                        print(f'--> {name}: ALPB GSolv = {gsolv:.2f} kcal/mol')
+                        energy += gsolv
+
+                else:
+                
+                    assert constrained_angles_indices == [], "No planar angles for xtb_opt yet..."
+
+                    coords, energy, success = xtb_opt(coords,
+                                                    data.atomnos,
+                                                    constrained_indices=constrained_indices,
+                                                    constrained_distances=constrained_distances,
+                                                    constrained_dihedrals=constrained_dihedrals,
+                                                    constrained_dih_angles=constrained_dih_angles,
+                                                    constrain_string=options["constrain_string"],
+                                                    method=method,
+                                                    solvent=options["solvent"],
+                                                    charge=options["charge"],
+                                                    opt=options["opt"],
+                                                    )
+
+                elapsed = perf_counter() - t_start
+
+                if energy is None:
+                    print(f'--> ERROR: Optimization of {name} crashed. ({time_to_string(elapsed)})')
+
+                elif options["opt"]:
+                    with open(outname, write_type) as f:
+                        write_xyz(coords, data.atomnos, f, title=f'Energy = {energy} kcal/mol')
+                    print(f"{'Appended' if write_type == 'a' else 'Wrote'} optimized structure at {outname} - {time_to_string(elapsed)}\n")
+
+            if add_free_energy:
+                sph = (len(constraints) != 0)
+                print(f'Calculating Free Energy contribution{" (SPH)" if sph else ""} on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
+                gcorr = xtb_get_free_energy(coords, data.atomnos, method='GFN-FF', solvent=options["solvent"], charge=options["charge"], sph=sph, grep='Gcorr')
+                print(f'GCORR: {name}, conf {c_n+1} - {gcorr:.2f} kcal/mol')
+                energy += gcorr
+
+            energies.append(energy)
+            names_confs.append(name[:-4]+f"_conf{c_n+1}")
+
+    except RuntimeError as e:
+        print("--> ", name, " - ", e)
+        continue
+
+    if constraints:
+        print(f'Constraints: final values')
+
         for constraint in constraints:
-                
             if constraint.type == 'B':
-                constrained_indices.append(constraint.indices)
-                constrained_distances.append(constraint.value)
-
                 a, b = constraint.indices
-                print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A at start of optimization (target is {constraint.value} A)")
-
+                final_value = norm_of(coords[a]-coords[b])
+                uom = ' Å'
+            
             elif constraint.type == 'A':
-                constrained_angles_indices.append(constraint.indices)
-                constrained_angles_values.append(constraint.value)
-                
                 a, b, c = constraint.indices
-                print(f"CONSTRAIN ANGLE -> Angle({a}-{b}-{c}) = {round(point_angle(coords[a],coords[b],coords[c]), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
+                final_value = point_angle(coords[a],coords[b],coords[c])
+                uom = '°'
 
             elif constraint.type == 'D':
-                if constraint.value is None:
-                    constraint.value = dihedral(np.array([coords[a],coords[b],coords[c], coords[d]]))
-
-                constrained_dihedrals.append(constraint.indices)
-                constrained_dih_angles.append(constraint.value)
-
                 a, b, c, d = constraint.indices
-                print(f"CONSTRAIN DIHEDRAL -> Dih({a}-{b}-{c}-{d}) = {round(dihedral(np.array([coords[a],coords[b],coords[c], coords[d]])), 3)}° at start of optimization, target {round(constraint.value, 3)}°")
-        
-        action = "Optimizing" if options["opt"] else "Calculating SP energy on"
-        for method in options["method"]:
-            print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
-            t_start = perf_counter()
+                final_value = dihedral(np.array([coords[a],coords[b],coords[c], coords[d]]))
+                uom = '°'
 
-            if aimnet2:
+            indices_string = '-'.join([str(i) for i in constraint.indices])
+            print(f"CONSTRAIN -> {constraint.type}({indices_string}) = {round(final_value, 3)}{uom}")
 
-                assert constrained_dihedrals == [], "No dih angles for aim yet..."
+            # revert original indices for the next molecule
+            if smarts_string is not None:
+                constraint.indices = constraint.old_indices
 
-                coords, energy, success = aimnet2_opt(
-                                                        coords,
-                                                        data.atomnos,
-
-                                                        constrained_indices=constrained_indices,
-                                                        constrained_distances=constrained_distances,
-
-                                                        constrained_angles_indices=constrained_angles_indices,
-                                                        constrained_angles_values=constrained_angles_values,
-
-                                                        constrained_dihedrals_indices=constrained_dihedrals,
-                                                        constrained_dihedrals_values=constrained_dih_angles,
-
-                                                        ase_calc=calc,
-                                                        traj=name[:-4] + "_traj",
-                                                        logfunction=print,
-                                                        # title='temp',
-                                                        charge=options["charge"],
-                                                        maxiter=500 if options["opt"] else 1,
-
-                                                        debug=True,
-                                                    )
-                
-                if options["solvent"] is not None:
-                    gsolv = xtb_gsolv(
-                                        coords,
-                                        data.atomnos,
-                                        charge=options['charge'],
-                                        solvent=options['solvent'],
-                                    )
-                    print(f'--> {name}: ALPB GSolv = {gsolv:.2f} kcal/mol')
-                    energy += gsolv
-
-            else:
-            
-                assert constrained_angles_indices == [], "No planar angles for xtb_opt yet..."
-
-                coords, energy, success = xtb_opt(coords,
-                                                data.atomnos,
-                                                constrained_indices=constrained_indices,
-                                                constrained_distances=constrained_distances,
-                                                constrained_dihedrals=constrained_dihedrals,
-                                                constrained_dih_angles=constrained_dih_angles,
-                                                constrain_string=options["constrain_string"],
-                                                method=method,
-                                                solvent=options["solvent"],
-                                                charge=options["charge"],
-                                                opt=options["opt"],
-                                                )
-
-            elapsed = perf_counter() - t_start
-
-            if energy is None:
-                print(f'--> ERROR: Optimization of {name} crashed. ({time_to_string(elapsed)})')
-
-            elif options["opt"]:
-                with open(outname, write_type) as f:
-                    write_xyz(coords, data.atomnos, f, title=f'Energy = {energy} kcal/mol')
-                print(f"{'Appended' if write_type == 'a' else 'Wrote'} optimized structure at {outname} - {time_to_string(elapsed)}")
-
-        if add_free_energy:
-            sph = (len(constraints) != 0)
-            print(f'Calculating Free Energy contribution{" (SPH)" if sph else ""} on {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
-            gcorr = xtb_get_free_energy(coords, data.atomnos, method='GFN-FF', solvent=options["solvent"], charge=options["charge"], sph=sph, grep='Gcorr')
-            print(f'GCORR: {name}, conf {c_n+1} - {gcorr:.2f} kcal/mol')
-            energy += gcorr
-
-        energies.append(energy)
-        names_confs.append(name[:-4]+f"_conf{c_n+1}")
-
-    for constraint, target in zip(constraints, distances):
-        if len(constraint) == 2:
-            print(f"CONSTRAIN -> d({a}-{b}) = {round(norm_of(coords[a]-coords[b]), 3)} A")
-
+        print()
 if None not in energies:
 
     if len(names_confs) > 1:

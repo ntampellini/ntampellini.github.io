@@ -1,0 +1,71 @@
+#  Define variables
+variable method1 = "R2SCAN-3c";
+variable method2 = "wB97M-V def2-TZVPP";
+variable solvent = "acetonitrile";
+variable extra_block_1 = "";
+variable extra_block_2 = "";
+
+# Declare other variables
+variable method1_EE=0.0;
+variable method1_G=0.0;
+variable method1_Gcorr=0.0;
+variable method1_H=0.0;
+variable method1_Hcorr=0.0;
+variable method2_EE=0.0;
+variable method2_compositeG=0.0;
+variable method2_compositeH=0.0;
+variable res;
+
+# Perform popt at method1 level
+New_Step
+  ! &{method1} Opt Defgrid3 CPCM(&{solvent})
+
+    &{extra_block_1}
+
+Step_End
+Alias_Step m0
+
+# Perform saddle opt at method1 level
+New_Step
+  ! &{method1} OptTS TightOpt Defgrid3 Freq CPCM(&{solvent})
+
+    %geom
+      Calc_Hess true
+    end
+
+    &{extra_block_2}
+
+Step_End
+Alias_Step m1
+
+res = method1_EE.ReadProperty(propertyName="DFT_TOTAL_EN");
+res = method1_G.ReadProperty(propertyName="THERMO_FREE_ENERGY_G");
+res = method1_H.ReadProperty(propertyName="THERMO_ENTHALPY_H");
+
+method1_Gcorr = method1_G - method1_EE;
+method1_Hcorr = method1_H - method1_EE;
+
+# Perform sp at method2 level
+New_Step
+  ! &{method2} Defgrid3
+
+  %cpcm smd true
+    SMDsolvent "&{solvent}"
+  end
+
+Step_End
+Alias_Step m2
+
+res = method2_EE.ReadProperty(propertyName="DFT_TOTAL_EN");
+
+method2_compositeG = method2_EE + method1_Gcorr;
+method2_compositeH = method2_EE + method1_Hcorr;
+
+print("--> Composite G (Eh)  %16.12lf \n", method2_compositeG);
+print("--> Composite H (Eh)  %16.12lf \n", method2_compositeH);
+print("\n");
+print("--> %6s Gcorr (Eh)  %16.12lf \n", method1, method1_Gcorr);
+print("--> %6s Hcorr (Eh)  %16.12lf \n", method1, method1_Hcorr);
+print("--> %6s EE    (Eh)  %16.12lf \n", method2, method2_EE);
+
+end

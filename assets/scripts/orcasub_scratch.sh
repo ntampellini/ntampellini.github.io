@@ -46,8 +46,12 @@ function copy_files_to_submit_dir {
   cp $tdir/*.scfr $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*.nbo $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/FILE.47 $SLURM_SUBMIT_DIR 2>/dev/null || :
-  cp $tdir/${job}.property.txt $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/*.txt $SLURM_SUBMIT_DIR 2>/dev/null || :
   cp $tdir/*spin* $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/*.densities* $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/*.nto $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/*.dat $SLURM_SUBMIT_DIR 2>/dev/null || :
+  cp $tdir/*.allxyz $SLURM_SUBMIT_DIR 2>/dev/null || :
 }
 
 trap '"Timeout! Transfering files back to ${SLURM_SUBMIT_DIR} before Slurm kills the job." >> ${1}.out; copy_files_to_submit_dir; exit 2' SIGUSR1

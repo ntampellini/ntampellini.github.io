@@ -87,13 +87,23 @@ def rmsd_rot_corr_easy(ref, tgt, graph, atomnos, logfunction=None):
 if __name__ == '__main__':
     mol1 = read_xyz(sys.argv[1])
     mol2 = read_xyz(sys.argv[2])
-    rmsd, maxdev = rmsd_and_max_numba(mol1.atomcoords[0], mol2.atomcoords[0], center=True)
-    print()
-    print(f'RMSD    : {rmsd:.2f} A')
-    print(f'Max Dev.: {maxdev:.2f} A')
+    
+    min_ = 1E5
 
-    graph = graphize(mol1.atomcoords[0], mol1.atomnos)
-    rmsd, maxdev = rmsd_rot_corr_easy(mol1.atomcoords[0], mol2.atomcoords[0], graph=graph, atomnos=mol1.atomnos)
-    print()
-    print(f'(rot. corr.) RMSD    : {rmsd:.2f} A')
-    print(f'(rot. corr.) Max Dev.: {maxdev:.2f} A')
+    for i, c in enumerate(mol2.atomcoords):
+        rmsd, maxdev = rmsd_and_max_numba(mol1.atomcoords[0], c, center=True)
+        print()
+        print(f'{i:3}. RMSD    : {rmsd:.2f} A')
+        print(f'     Max Dev.: {maxdev:.2f} A')
+
+        if rmsd < min_:
+            min_ = rmsd
+
+    print(f'Min. RMSD: {min_:.2f} A')
+
+    for i, c in enumerate(mol2.atomcoords):
+        graph = graphize(mol1.atomcoords[0], mol1.atomnos)
+        rmsd, maxdev = rmsd_rot_corr_easy(mol1.atomcoords[0], c, graph=graph, atomnos=mol1.atomnos)
+        print()
+        print(f'(rot. corr.) {i:3}. RMSD    : {rmsd:.2f} A')
+        print(f'(rot. corr.)      Max Dev.: {maxdev:.2f} A')

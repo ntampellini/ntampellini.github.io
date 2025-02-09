@@ -32,24 +32,24 @@ def update(name):
 
         else:
 
-            cmptraj = name.split(".")[0] + "_Compound_1_trj.xyz"
+            # update with the latest Compound job trajectory
+            for i in range(4,0,-1):
+                cmptraj = name.split(".")[0] + f"_Compound_{i}_trj.xyz"
 
-            if cmptraj in os.listdir():
+                if cmptraj in os.listdir():
 
-                mol = read_xyz(cmptraj)
+                    mol = read_xyz(cmptraj)
 
-                with open(inp, "w") as f:
-                    write_xyz(mol.atomcoords[-1], mol.atomnos, f)
+                    with open(inp, "w") as f:
+                        write_xyz(mol.atomcoords[-1], mol.atomnos, f)
 
-                print(f"Updated {inp}")
-                
-                done.append(name.split(".")[0])
-                return True
+                    print(f"Updated {inp} from {cmptraj}")
+                    
+                    done.append(name.split(".")[0])
+                    return True
 
-            else:
-
-                print(f"Can't find {traj} nor {cmptraj}")
-                return False
+            print(f"Can't find {traj} nor {cmptraj}")
+            return False
 
 if __name__ == "__main__":
 

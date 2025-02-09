@@ -1,7 +1,7 @@
 import os 
 import plotext as plt
 import sys
-from utils import read_xyz, norm_of, dihedral
+from utils import read_xyz, norm_of, dihedral, point_angle
 
 plt.theme("pro")
 plt.plotsize(100, 25)
@@ -29,18 +29,24 @@ filenames = set(sys.argv[1:]) - set(indices)
 
 # determine style of results
 indices = [int(i) for i in indices]
-assert len(indices) in (2, 4)
+assert len(indices) in (2, 3, 4)
 
 cum_data = []
 
 for filename in filenames:
-    basename = filename.split(".")[0]   
+    basename = filename[:-4]
     mol = read_xyz(basename+".xyz")
 
     if len(indices) == 2:
         tag = "distance (A)"
         i1, i2 = indices
         data = [norm_of(coords[i1]-coords[i2]) for coords in mol.atomcoords]
+    
+    elif len(indices) == 3:
+        tag = "planar angle (degrees)"
+        i1, i2, i3 = indices
+        data = [point_angle(*coords[indices]) for coords in mol.atomcoords]
+
     else:
         tag = "dihedral angle (degrees)"
         i1, i2, i3, i4 = indices
