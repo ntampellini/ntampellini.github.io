@@ -12,6 +12,7 @@ options = {
     "procs" : 16,
     "mem" : 6, # Memory per core, in GB
     "charge" : 0,
+    "mult" : 1,
     "maxstep" : 0.3, # in au, i.e. Bohr atomic units (1au = 0.529177 A) - default is 0.3 au
     "popt" : False,
     "compound" : False,
@@ -47,6 +48,7 @@ epsilon_dict = {
 
 # round temperature so it looks prettier
 options["temp"] = round(options["temp"], 2)
+global_constraints = []
 
 ####################################################
 
@@ -55,15 +57,34 @@ import os
 import re
 import shutil
 import sys
-import numpy as np
 from subprocess import getoutput, run
 
+import numpy as np
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
-
-from utils import norm_of, pt, read_xyz, suppress_stdout_stderr, point_angle, dihedral
 from rich.traceback import install
+
+from utils import (dihedral, norm_of, point_angle, pt, read_xyz,
+                   suppress_stdout_stderr)
+
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
+
+class Constraint:
+    '''
+    Constraint class with indices, type and value attributes.
+    
+    '''
+    def __init__(self, indices, value=None):
+        
+        self.indices = indices
+
+        self.type = {
+            2 : 'B',
+            3 : 'A',
+            4 : 'D',
+        }[len(indices)]
+
+        self.value = value
 
 def inquirer_set_options(args):
     '''
@@ -86,6 +107,7 @@ def inquirer_set_options(args):
             Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
             Choice(value='irc',      name='irc      - Intrinsic reaction coordinate calculation.'),
             Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
+            Choice(value='freqtemp', name='freqtemp - Recalculate vibrational corrections at a new temperature.'),
         ),
         default='sp',
     ).execute()
@@ -93,7 +115,7 @@ def inquirer_set_options(args):
     # modify the option on the args namespace
     setattr(args, runtype, True)
 
-    if not args.compound:
+    if not any((args.compound, args.freqtemp)):
         # set solvent model
         options["solvent_model"] = inquirer.select(
             message=f"What solvation model would you like to use?",
@@ -107,7 +129,7 @@ def inquirer_set_options(args):
             # invalid_message="Solvent not recognized."
         ).execute()
 
-    if options["solvent_model"] is not None or args.compound:
+    if (not args.freqtemp) and (options["solvent_model"] is not None or args.compound):
         # set or confirm solvent
         options["solvent"] = inquirer.fuzzy(
             message=f"Current solvent is {options['solvent']}. Press enter to confirm or type another solvent:",
@@ -118,7 +140,7 @@ def inquirer_set_options(args):
         ).execute()
 
 def get_comp_script_inp(rootname):
-    return f'''* xyzfile {options["charge"]} 1 {rootname}.xyz
+    return f'''* xyzfile {options["charge"]} {options["mult"]} {rootname}.xyz
     
 %pal
  nprocs {options["procs"]}
@@ -135,6 +157,19 @@ end
     solvent = "{options["solvent"]}";
 {options["comp_job_extra_variables"]}
 end
+
+'''
+
+def get_freqtemp_inp(rootname):
+    return f'''! PrintThermoChem
+
+%geom
+  inhessname "{rootname}.hess"
+end
+
+%freq Temp {options["temp"]} end
+
+* xyzfile 0 1 {rootname}.xyz
 
 '''
 
@@ -187,7 +222,7 @@ end
 {options["constr_block"]}
 {options["extra_block"].replace('$ROOTNAME', rootname)}
 
-* xyzfile {options["charge"]} 1 {rootname}.xyz
+* xyzfile {options["charge"]} {options["mult"]} {rootname}.xyz
 
 '''
 
@@ -353,52 +388,21 @@ def inquire_constraints():
             message=f"Provide indices and optional distance{autod_ts_line}:"
             ).execute()
 
+        indices = [int(i) for i in c_string.split()[:-1]]
         if c_type == "B" and c_string.split()[-1] == "ts":
-            indices = [int(i) for i in c_string.split()[:-1]]
-            ts_d_estimate = str(get_ts_d_estimate(args.inputfiles[0], indices))
-            c_string = ' '.join(c_string.split()[:-1] + [ts_d_estimate])
+            target = str(get_ts_d_estimate(args.inputfiles[0], indices))
+            c_string = ' '.join(c_string.split()[:-1] + [target])
+        else:
+            target = float(c_string.split()[-1])
 
-        constraint_strings.append((c_type, c_string))
+        constraint_strings.append((c_type, c_string)) 
+        global_constraints.append(Choice(value=Constraint(indices, target), name=f"{c_type} {c_string}"))
 
     options["constr_block"] += "%geom Constraints\n"
     for c_type, c_string in constraint_strings:
         options["constr_block"] += "  {{ {0} {1} C }}\n".format(c_type, c_string)
         
     options["constr_block"] += "  end\nend"
-
-def inquire_ts_mode_following(default=""):
-
-    letter_dict = {
-        2 : "B",
-        3 : "A",
-        4 : "D",
-    }
-
-    choices = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
-
-    if choices:
-
-        if inquirer.confirm(message=("Would you like the saddle opt. to follow the constrained "
-                            f"coordinates from the previous popt?"), default=True).execute():
-
-            popt_ids = inquirer.select(
-                message="Select the constraint to follow:",
-                choices=choices).execute()
-            
-            letter = letter_dict[len(popt_ids.split())]
-            options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
-            return
-        
-    manual_ids = inquirer.text(
-        message=("Would you like the saddle opt. to follow a specific internal coordinate? "
-                f"If so, type the indices of the bond/angle/dihedral to follow."),
-        default=default,
-        ).execute()
-    
-    if manual_ids:
-        popt_ids = manual_ids.rstrip().strip()
-        letter = letter_dict[len(popt_ids.split())]
-        options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
 
 def get_prev_popt_constr_ids(rootname):
     '''
@@ -424,6 +428,59 @@ def get_prev_popt_constr_ids(rootname):
             choices.append(Choice(value=popt_ids, name=line))
         
         return choices
+
+def inquire_ts_mode_following(default=""):
+
+    letter_dict = {
+        2 : "B",
+        3 : "A",
+        4 : "D",
+    }
+
+    choices = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
+
+    if choices:
+
+        if inquirer.confirm(message=("Would you like the saddle opt. to follow the constrained "
+                            f"coordinates from the previous popt?"), default=True).execute():
+
+            popt_ids = inquirer.select(
+                message="Select the constraint to follow:",
+                choices=choices).execute()
+            
+            letter = letter_dict[len(popt_ids.split())]
+            options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
+            return
+    
+    ask_manual = False
+    if args.composite and global_constraints:
+        ids_from_global = inquirer.select(
+            message="Would you like the saddle opt. to follow one of these internal coordinates?",
+                choices=global_constraints+[Choice(value="manual", name='Specify a different one'), Choice(value=False, name='None')],
+                default=default,
+            ).execute()
+
+        if ids_from_global == 'manual':
+            ask_manual = True
+
+        elif not ids_from_global:
+            return
+
+        else:
+            popt_ids = ' '.join([str(n) for n in ids_from_global.indices])
+            options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(ids_from_global.type, popt_ids)
+
+    if ask_manual:
+        manual_ids = inquirer.text(
+            message=("Would you like the saddle opt. to follow a specific internal coordinate? "
+                    f"If so, type the indices of the bond/angle/dihedral to follow."),
+            default=default,
+            ).execute()
+    
+    if manual_ids:
+        popt_ids = manual_ids.rstrip().strip()
+        letter = letter_dict[len(popt_ids.split())]
+        options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
 
 def get_goat_block():
 
@@ -499,6 +556,45 @@ def set_auto_solvent():
 
     options["solvent"] = sorted([(n, solvent_list.count(n)) for n in set(solvent_list)], key=lambda x: x[1], reverse=True)[0][0]
 
+def copy_from_parent_if_not_here(filename):
+    '''
+    Copy a file from the parent folder to the current,
+    unless a file with the same name is already present
+    in the current folder.
+    
+    '''
+
+    if not filename in os.listdir():
+        parent = os.path.dirname(os.getcwd())
+        if filename in os.listdir(parent):
+            source = os.path.join(parent, filename)
+            target = os.path.join(os.getcwd(), filename)
+            shutil.copyfile(source, target)
+            print(f'--> Copied {filename} from parent folder to current folder.')
+        else:
+            raise Exception(f'Could not find {filename} file in current nor parent folder.')
+        
+def multiplicity_check(rootname, charge, multiplicity=1) -> bool:
+    '''
+    Returns True if the multiplicity and the nuber of
+    electrons are one odd and one even, and vice versa.
+
+    '''
+
+    electrons = 0
+    for line in getoutput(f'cat {rootname}.xyz').splitlines():
+        parts = line.split()
+        if len(parts) == 4:
+            try:
+                element = parts[0]
+                electrons += getattr(pt, element).number
+            except AttributeError:
+                pass
+
+    electrons -= charge
+    
+    return (multiplicity % 2) != (electrons % 2)
+        
 ############################################################# START OF LOGIC
 
 # usage = (
@@ -530,6 +626,7 @@ parser.add_argument("-compound", help="Set input type to a compound method.", ac
 parser.add_argument("-irc", help="Set input type to IRC.", action="store_true", required=False)
 parser.add_argument("-priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
 parser.add_argument("-goat", help="Conformational search via GOAT.", action="store_true", required=False)
+parser.add_argument("-freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
 args = parser.parse_args()
 
 if not args.inputfiles:
@@ -661,7 +758,6 @@ if args.irc:
     options["opt"] = ""
 
 if args.goat:
-
     options["level"] = inquirer.select(
             message="What level of theory would you like to use?",
             choices=(
@@ -681,6 +777,10 @@ if args.goat:
                 default=False,
             ).execute():
         inquire_constraints()
+
+if args.freqtemp:
+    ans = inquirer.text(message="Specify the new temperature for the vibrational correction, in degrees Celsius:").execute()
+    options["temp"] = round(float(ans) + 273.15, 2)
 
 # Make sure to add Freq for appropriate calculations if we have not already
 if options["freq"] and "Freq" not in options["additional_kw"]:
@@ -703,27 +803,35 @@ for option, value in options.items():
 print()
 
 # calculate processors to use for each job and ask if user wants to override
-procs_list = [get_procs(filename.split('.')[0]) for filename in args.inputfiles]
+if args.freqtemp:
+    procs_list = [1 for filename in args.inputfiles]
+
+else:
+    procs_list = [get_procs(filename.split('.')[0]) for filename in args.inputfiles]
+    if newprocs := inquirer.text(
+            message=f'Automatic number of cores is {procs_list[0]}. Type a different number to override or enter to confirm.'
+                ).execute():
+        procs_list = [int(newprocs) for _ in procs_list]
+
 cum_cost, cum_cpu, cum_mem = 0, 0, 0
-if newprocs := inquirer.text(
-        message=f'Automatic number of cores is {procs_list[0]}. Type a different number to override or enter to confirm.'
-            ).execute():
-    procs_list = [int(newprocs) for _ in procs_list]
+
+#################################################################################### COPY STUFF FROM PARENT FOLDER
 
 # make sure we have all the required files for the job in the submission folder
+
+# wB97M(2) needs the gbw file (copy from parent folder)
 if options["level"] == 'wB97M(2)':
     for filename in args.inputfiles:
         wfn = filename[:-4]+".gbw"
-        if not wfn in os.listdir():
-            parent = os.path.dirname(os.getcwd())
-            if wfn in os.listdir(parent):
-                source = os.path.join(parent, wfn)
-                target = os.path.join(os.getcwd(), wfn)
-                shutil.copyfile(source, target)
-                print(f'--> Copied {wfn} from parent folder to current folder.')
-            else:
-                raise Exception(f'Could not find {wfn} file in current nor parent folder.')
+        copy_from_parent_if_not_here(wfn)
+        
+# freqtemp needs the hessian (copy from parent folder)
+if args.freqtemp:
+    for filename in args.inputfiles:
+        hessname = filename[:-4]+".hess"
+        copy_from_parent_if_not_here(hessname)
 
+#################################################################################### WRITE INPs, PRINT JOB TABLE
 
 # start printing job table
 print(f'#    Filename                       Cores  Mem(GB)  Max cost (24h)')
@@ -737,7 +845,7 @@ for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
     cum_cpu += procs
     cum_mem += options["mem"] * procs
 
-    print(f'{str(f):>3}  {filename:30s} {procs:2}     {options["mem"]*procs:d}       {cost:.2f} $')
+    print(f'{str(f+1):>3}  {filename:30s} {procs:2}     {options["mem"]*procs:d}       {cost:.2f} $')
 
     if auto_charges:
         if '+' in rootname:
@@ -750,8 +858,19 @@ for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
             options['charge'] = 0
             print(f'--> {filename} : assigned charge 0 based on input name')
 
+    if multiplicity_check(rootname, options["charge"]):
+        options['mult'] = 1
+    else:
+        options['mult'] = inquirer.text(
+            message=f'It appears {rootname} is not a singlet. Please specify multiplicity:',
+            validate=lambda inp: inp.isdigit() and int(inp) > 1,
+        ).execute()
+
     if args.compound:
         s = get_comp_script_inp(rootname)
+
+    elif args.freqtemp:
+        s = get_freqtemp_inp(rootname)
 
     else:
         s = get_inp(rootname, opt=options["opt"] != "")

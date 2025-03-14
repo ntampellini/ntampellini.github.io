@@ -11,6 +11,9 @@ from firecode.utils import (graphize, read_xyz, suppress_stdout_stderr,
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import PathValidator
+from rich.traceback import install
+
+install(show_locals=True)
 
 scratchdir = '/vast/palmer/scratch/miller/nt383'
 EH_TO_KCAL = 627.509608030593
@@ -178,17 +181,22 @@ def compare(argv):
     # check if we are reading compound jobs,
     # and if so ask what energy to extract
     previous_to_last_energy = False
-    if getoutput(f'grep \".cmp\" {argv[1][:-4]}.inp'):
-        previous_to_last_energy = inquirer.select(
-            message="What energy would you like to extract?",
-            choices=(
-                Choice(value=True, name='Previous to last energy'),
-                Choice(value=False, name='Last energy'),
-            ),
-            default=False,
-        ).execute()
+    try:
+        if operating_system.path.isfile(f'{argv[1][:-4]}.inp'):
+            if getoutput(f'grep \".cmp\" {argv[1][:-4]}.inp'):
+                previous_to_last_energy = inquirer.select(
+                    message="What energy would you like to extract?",
+                    choices=(
+                        Choice(value=True, name='Previous to last energy'),
+                        Choice(value=False, name='Last energy'),
+                    ),
+                    default=False,
+                ).execute()
 
-        freqdir = "."
+                freqdir = "."
+                
+    except IndexError:
+        pass
 
     # Start extracting stuff
     jobs = []
@@ -204,7 +212,7 @@ def compare(argv):
             relative = any(['Rel' in line for line in energies])
 
             energies = [float(next(
-                            part for part in line.split() if (any(c.isdigit() for c in part) and
+                            part for part in line.split() if (any(c == '.' for c in part) and
                                                               set(part).issubset('0123456789.-'))))
                         for line in energies]
             
@@ -436,22 +444,24 @@ def compare(argv):
         for job in jobs:
             job.rel_energy = (job.get_comparison_energy()-min_e)*EH_TO_KCAL
 
+        # print to same-name new files if user asked to
         if operating_system.path.basename(outname) == '':
             print(f'--> Transfering {len(jobs)} structures to same-name new files in {operating_system.path.dirname(outname)}')
 
             for job in jobs:
 
-                outname = operating_system.path.join(operating_system.path.dirname(outname), job.name)[:-4] + '.xyz'
+                outname = operating_system.path.join(operating_system.path.dirname(outname), job.name).rstrip('.xyz').rstrip('.out') + '.xyz'
                 with open(outname, "w") as f:
-                    title = f"Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
+                    title = f"{letter} = {job.get_comparison_energy()} Eh - Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
                     if g:
                         title += f" - gcorr(Eh) = {job.gcorr:8}"
                     write_xyz(job.last_coords, job.atomnos, f, title=title)
 
+        # printing to a single new filename the user provided
         else:
             with open(outname, "w") as f:
                 for job in jobs:
-                    title = f"{job.name} - Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
+                    title = f"{job.name} - {letter} = {job.get_comparison_energy()} Eh - Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
                     if g:
                         title += f" - gcorr(Eh) = {job.gcorr:8}"
                     write_xyz(job.last_coords, job.atomnos, f, title=title)

@@ -34,7 +34,7 @@ if __name__ == '__main__':
                 workdir = [line.split('=')[1] for line in getoutput(f"scontrol show job {pid}").split("\n") if 'WorkDir' in line][0]
                 # if workdir == cwd:
                 jobdir = next(name for name in scratchnames if pid in name)
-                jobname = jobdir.split('-')[1].strip(pid).strip('_')
+                jobname = ('-'.join(jobdir.split('-')[1:]))[:-5].strip(pid).strip('_')
                 fullname = scratchdir+"/"+jobdir+'/'+jobname+'.out'
                 choices.append(Choice(value=fullname, name=f'{pid} - {workdir}/{jobname}.out'))
 
@@ -178,8 +178,10 @@ if __name__ == '__main__':
 
                 #         if not line:
                 #             break
-
-                energies = [float(line.split()[3]) for line in getoutput(f'grep \'&FINALEN\' {propname}').split('\n')]
+                try:
+                    energies = [float(line.split()[3]) for line in getoutput(f'grep \'&FINALEN\' {propname}').split('\n')]
+                except IndexError:
+                    energies = []
 
             else:
                 # energies = []

@@ -3,7 +3,7 @@ import os
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
-def get_procs(name, default=16):
+def get_procs(name, default=1):
     with open(name, "r") as f:
         lines = [line for line in f.readlines() if "nprocs" in line]
     if len(lines) != 1:
