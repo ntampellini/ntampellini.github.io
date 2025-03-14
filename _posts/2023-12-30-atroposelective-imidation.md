@@ -44,10 +44,10 @@ tags: [interactive, computational_chemistry, publication]
   }
 
   .iframe-parent{
-    max-width: 650px;
-    max-height: 400px;
-    width: 80vw;
-    height: 50vw;
+    max-width: min(95vw, 800px);
+    max-height: min(80vh, 500px);
+    width: 95vw;
+    height: 60vw;
     margin-left:auto;
     margin-right:auto;
   }
