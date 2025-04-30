@@ -10,11 +10,12 @@ from InquirerPy import inquirer
 # setting ids for the key atoms
 
 indices_dict = {
-    "bzh_arm" : (107, 106, 108, 119),
-    "anth" : (104, 103, 105, 116),
-    "tBuNHCO" : (97, 96, 98, 109),
-    "dPhg" : (102, 101, 103, 114),
-    "homoBzh" : (102, 103, 114, 101),
+    # "bzh_arm" : (107, 106, 108, 119),
+    # "anth" : (104, 103, 105, 116),
+    # "tBuNHCO" : (97, 96, 98, 109),
+    # "dPhg" : (102, 101, 103, 114),
+    # "homoBzh" : (102, 103, 114, 101),
+    "prod_in_ts" : (102, 103, 114, 101),
 }
 
 set_name = inquirer.select(

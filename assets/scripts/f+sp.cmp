@@ -2,45 +2,22 @@
 variable method1 = "R2SCAN-3c";
 variable method2 = "wB97M-V def2-TZVPP";
 variable solvent = "acetonitrile";
-variable extra_block_1 = "";
-variable extra_block_2 = "";
 
 # Declare other variables
-variable method1_EE=0.0;
-variable method1_G=0.0;
-variable method1_Gcorr=0.0;
-variable method1_H=0.0;
-variable method1_Hcorr=0.0;
-variable method2_EE=0.0;
-variable method2_compositeG=0.0;
-variable method2_compositeH=0.0;
-variable res;
+variable method1_EE, method1_G, method1_Gcorr;
+variable method1_H, method1_Hcorr;
+variable method2_EE, method2_compositeG, method2_compositeH;
 
-# Perform popt at method1 level
+# Perform freq at method1 level
 New_Step
-  ! &{method1} Opt Defgrid3 CPCM(&{solvent})
-
-    &{extra_block_1}
-
-Step_End
-Alias_Step m0
-
-# Perform saddle opt at method1 level
-New_Step
-  ! &{method1} OptTS TightOpt Defgrid3 Freq CPCM(&{solvent})
-
-    %geom
-      Calc_Hess true
-    end
-
-    &{extra_block_2}
-
+  ! &{method1} Defgrid3 Freq CPCM(&{solvent})
 Step_End
 Alias_Step m1
 
-res = method1_EE.ReadProperty(propertyName="JOB_INFO_TOTAL_EN");
-res = method1_G.ReadProperty(propertyName="THERMO_FREE_ENERGY_G");
-res = method1_H.ReadProperty(propertyName="THERMO_ENTHALPY_H");
+
+read method1_EE = JOB_INFO_TOTAL_EN[m1];
+read method1_G = THERMO_FREE_ENERGY_G[m1];
+read method1_H = THERMO_ENTHALPY_H[m1];
 
 method1_Gcorr = method1_G - method1_EE;
 method1_Hcorr = method1_H - method1_EE;
@@ -56,7 +33,7 @@ New_Step
 Step_End
 Alias_Step m2
 
-res = method2_EE.ReadProperty(propertyName="JOB_INFO_TOTAL_EN");
+read method2_EE = JOB_INFO_TOTAL_EN[m2];
 
 method2_compositeG = method2_EE + method1_Gcorr;
 method2_compositeH = method2_EE + method1_Hcorr;

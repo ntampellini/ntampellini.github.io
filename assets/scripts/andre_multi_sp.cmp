@@ -1,0 +1,50 @@
+%Compound
+
+Variable basis  = "def2-QZVPPD def2-QZVPPD/C def2/J";
+
+Variable functionals = { "TPSSh D4", "B3LYP D4", "r2scan0 D4", "PBE0 D4", "PW6B95 D4", "wr2scan D4", "wb97m-V", "wb97m-D4rev", "wb97x-V", "wb97x-D4rev", "wPr2scan50 D4", "Pr2scan69 D4", "revDSD-PBEP86-D4/2021", "revDOD-PBEP86-D4/2021", "B2GP-PLYP D4" "PWPB95 D4"};
+
+Variable solvation = { "CPCM(toluene)", "SMD(toluene)", "CPCMX(toluene)"};
+
+Variable numOfSteps = functionals.GetDim1();
+Variable numOfSolvation = solvation.GetDim1();
+Variable Energies[numOfSteps][numOfSolvation];
+
+Variable s; 
+
+For i from 0 to numOfSteps-1 Do
+  For j from 0 to numOfSolvation-1 Do
+
+    New_step
+      ! &{functionals[i]} &{basis} &{solvation[j]}
+      %pal
+        nprocs 16
+      end
+      %maxcore 4000
+    Step_end
+    Alias currStep;
+    Read Energies[i][j] = JOB_INFO_TOTAL_EN[currStep];
+
+  EndFor
+EndFor
+
+print("================================================================\n");
+print("       Compound Printing              \n");
+print("%16s  ","Functional");
+for i from 0 to numOfSolvation-1 Do 
+  print("%16s  ",  solvation[i]);
+EndFor
+print("\n");
+print("================================================================\n");
+For index from 0 to numOfSteps - 1 Do
+  print("%16s  ", functionals[index]);
+  For idx from 0 to numOfSolvation - 1 Do
+    print("%16.8lf  ",  Energies[index][idx]);
+  EndFor
+  print("\n");
+EndFor
+print("================================================================\n");
+
+
+
+End

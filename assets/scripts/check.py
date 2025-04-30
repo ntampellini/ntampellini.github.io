@@ -1,28 +1,31 @@
+import os
+import sys
+from subprocess import getoutput
+
+import numpy as np
 import plotext as plt
 from cclib.io import ccread
-import sys
-from numpy.linalg import norm
-import numpy as np
-from subprocess import getoutput
-import os
-from utils import dihedral, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
+from numpy.linalg import norm
 
-plt.theme("pro")
-plt.plotsize(100,25)
-plot_distance = False
-scan = False
-neb = False
-compound = False
-indices = None
-zoom = False
-scratchdir = '/vast/palmer/scratch/miller/nt383'
+from utils import dihedral, write_xyz
 
-if __name__ == '__main__':
+
+def main(loop=False):
+
+    plt.theme("pro")
+    plt.plotsize(100,25)
+    plot_distance = False
+    scan = False
+    neb = False
+    compound = False
+    indices = None
+    zoom = False
+    scratchdir = '/vast/palmer/scratch/miller/nt383'
 
     # if no outname is provided, list running jobs
-    if len(sys.argv) == 1:
+    if len(sys.argv) == 1 or loop:
 
         cwd = os.getcwd()
         scratchnames = getoutput(f'ls {scratchdir}').split()
@@ -42,10 +45,16 @@ if __name__ == '__main__':
                 continue
 
         if choices:
+            loop = True
             fullname = inquirer.select(
                 message="Which running job would you like to check?",
-                choices=choices,
+                choices=choices+[Choice(value=None, name="(quit)")],
+                default=choices[0].value,
                 ).execute()
+            
+            if fullname == None:
+                sys.exit()
+
             sys.argv.append(fullname)
             print(f'--> Checking PID {pid} in scratch directory {fullname}')
 
@@ -379,3 +388,11 @@ if __name__ == '__main__':
 
     if compound:
         os.system(f"grep \'\-\->\' {rootname}.out")
+
+    # if no outname was provided, loop
+    if loop:
+        sys.argv = [sys.argv[0]]
+        main(loop=loop)
+
+if __name__ == '__main__':
+    main()

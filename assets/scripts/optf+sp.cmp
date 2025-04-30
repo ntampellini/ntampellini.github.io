@@ -15,7 +15,7 @@ Step_End
 Alias_Step m1
 
 
-read method1_EE = DFT_TOTAL_EN[m1];
+read method1_EE = JOB_INFO_TOTAL_EN[m1];
 read method1_G = THERMO_FREE_ENERGY_G[m1];
 read method1_H = THERMO_ENTHALPY_H[m1];
 
@@ -33,7 +33,7 @@ New_Step
 Step_End
 Alias_Step m2
 
-read method2_EE = DFT_TOTAL_EN[m2];
+read method2_EE = JOB_INFO_TOTAL_EN[m2];
 
 method2_compositeG = method2_EE + method1_Gcorr;
 method2_compositeH = method2_EE + method1_Hcorr;

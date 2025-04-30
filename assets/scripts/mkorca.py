@@ -115,7 +115,7 @@ def inquirer_set_options(args):
     # modify the option on the args namespace
     setattr(args, runtype, True)
 
-    if not any((args.compound, args.freqtemp)):
+    if not any((args.compound, args.freqtemp, args.goat)):
         # set solvent model
         options["solvent_model"] = inquirer.select(
             message=f"What solvation model would you like to use?",
@@ -129,7 +129,7 @@ def inquirer_set_options(args):
             # invalid_message="Solvent not recognized."
         ).execute()
 
-    if (not args.freqtemp) and (options["solvent_model"] is not None or args.compound):
+    if (not args.freqtemp) and (options["solvent_model"] is not None or args.compound or args.goat):
         # set or confirm solvent
         options["solvent"] = inquirer.fuzzy(
             message=f"Current solvent is {options['solvent']}. Press enter to confirm or type another solvent:",
@@ -234,8 +234,8 @@ def get_scan_block(filename):
     c_type = inquirer.select(
             message="Which type of scan would you like to perform?",
             choices=(
-                Choice(value='B', name='Bond (2 indices, target distance)'),
-                Choice(value='A', name='Angle (3 indices, target angle)'),
+                Choice(value='B', name='Bond     (2 indices, target distance)'),
+                Choice(value='A', name='Angle    (3 indices, target angle)'),
                 Choice(value='D', name='Dihedral (4 indices, target dihedral)'),
             ),
             default='B',
@@ -365,6 +365,8 @@ def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
 
 def inquire_constraints():
 
+    c_type_dict = {"B":2, "A":3, "D":4}
+
     constraint_strings = []
     while True:
 
@@ -382,20 +384,29 @@ def inquire_constraints():
         if c_type is None:
             break
 
+        distance_name = {"B":"distance", "A":"angle", "D":"dihedral"}[c_type]
         autod_ts_line = ", or \"ts\" to estimate one" if c_type == "B" else ""
 
         c_string = inquirer.text(
-            message=f"Provide indices and optional distance{autod_ts_line}:"
+            message=f"Provide indices and optional {distance_name}{autod_ts_line}:",
+            validate=lambda s: (c_type_dict[c_type] - len(s.split())) <= 1,
+            invalid_message=f"Provide {c_type_dict[c_type]} indices and an optional {distance_name}."
             ).execute()
 
-        indices = [int(i) for i in c_string.split()[:-1]]
-        if c_type == "B" and c_string.split()[-1] == "ts":
-            target = str(get_ts_d_estimate(args.inputfiles[0], indices))
-            c_string = ' '.join(c_string.split()[:-1] + [target])
-        else:
-            target = float(c_string.split()[-1])
+        target_was_provided = (c_type_dict[c_type] == len(c_string.split()) - 1)
 
-        constraint_strings.append((c_type, c_string)) 
+        if target_was_provided:
+            indices = [int(i) for i in c_string.split()[:-1]]
+            if c_type == "B" and c_string.split()[-1] == "ts":
+                target = str(get_ts_d_estimate(args.inputfiles[0], indices))
+                c_string = ' '.join(c_string.split()[:-1] + [target])
+            else:
+                target = float(c_string.split()[-1])
+        else:
+            indices = [int(i) for i in c_string.split()]
+            target = None
+
+        constraint_strings.append((c_type, c_string))
         global_constraints.append(Choice(value=Constraint(indices, target), name=f"{c_type} {c_string}"))
 
     options["constr_block"] += "%geom Constraints\n"
@@ -425,7 +436,9 @@ def get_prev_popt_constr_ids(rootname):
                 elem = getoutput(f'sed "{3+int(index)}q;d" {rootname}.xyz').split()[0]
                 line += f'{elem}({index})-'
             line = line[:-1]
-            choices.append(Choice(value=popt_ids, name=line))
+
+            if popt_ids != '':
+                choices.append(Choice(value=popt_ids, name=line))
         
         return choices
 
@@ -453,7 +466,7 @@ def inquire_ts_mode_following(default=""):
             return
     
     ask_manual = False
-    if args.composite and global_constraints:
+    if args.compound and global_constraints:
         ids_from_global = inquirer.select(
             message="Would you like the saddle opt. to follow one of these internal coordinates?",
                 choices=global_constraints+[Choice(value="manual", name='Specify a different one'), Choice(value=False, name='None')],
@@ -476,6 +489,8 @@ def inquire_ts_mode_following(default=""):
                     f"If so, type the indices of the bond/angle/dihedral to follow."),
             default=default,
             ).execute()
+    else:
+        manual_ids = False
     
     if manual_ids:
         popt_ids = manual_ids.rstrip().strip()
@@ -611,7 +626,7 @@ def multiplicity_check(rootname, charge, multiplicity=1) -> bool:
 #     "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
 # )
 
-parser = argparse.ArgumentParser() 
+parser = argparse.ArgumentParser()
 parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
 parser.add_argument("-solvent", help="Set solvent to the specified one.", action="store", required=False)
 parser.add_argument("-sp", help="Set input type to SP.", action="store_true", required=False)
@@ -622,12 +637,22 @@ parser.add_argument("-optf", help="Set input type to optimization + frequency ca
 parser.add_argument("-popt",help="Set input type to partial optimization.", action="store_true", required=False)
 parser.add_argument("-scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
 parser.add_argument("-nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
+parser.add_argument("-tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
 parser.add_argument("-compound", help="Set input type to a compound method.", action="store_true", required=False)
 parser.add_argument("-irc", help="Set input type to IRC.", action="store_true", required=False)
 parser.add_argument("-priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
 parser.add_argument("-goat", help="Conformational search via GOAT.", action="store_true", required=False)
 parser.add_argument("-freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
 args = parser.parse_args()
+
+for filename in args.inputfiles:
+    if not filename.endswith(".xyz"):
+        args.inputfiles.remove(filename)
+        print(f"--> {filename} is not a structure file.")
+
+    elif filename.endswith("_trj.xyz"):
+        args.inputfiles.remove(filename)
+        print(f"--> Ignoring {filename} as it appears to be a trajectory file.")
 
 if not args.inputfiles:
     raise Exception('No input structures selected. Please specify at least one.')
@@ -641,6 +666,7 @@ if not any((args.sp,
             args.popt,
             args.scan,
             args.nmr,
+            args.tddft,
             args.compound,
             args.irc,
             args.goat)):
@@ -719,6 +745,35 @@ if args.scan:
     # make scan %geom block and add it to the extra block
     options["constr_block"] += get_scan_block(args.inputfiles[0])
 
+if args.tddft:
+
+    inquire_level()
+
+    options["opt"] = inquirer.select(
+        message="Which kind of calculation would you like to run?",
+        choices=[
+            Choice(value="Opt", name="opt(f)"),
+            Choice(value="", name="sp"),
+        ]
+    ).execute()
+
+    if options["opt"] == "Opt":
+        options["freq"] = inquirer.confirm(
+        message="Run frequency calculation?",
+        default=False,
+    ).execute()
+        
+    
+    options["extra_block"] += inquirer.select(
+        message="Which kind of calculation would you like to run?",
+        choices=[
+            Choice(value=f"%tddft\n  NRoots 10\nend\n", name="Compute the first 10 excitations from the ground state"),
+            Choice(value=f"%tddft\n  IRoot 1\nend\n", name="Optimize to the first excited state"),
+        ]
+    ).execute()
+
+    options["additional_kw"] += " Defgrid3"
+
 if args.nmr:
     options["freq"] = False
     options["opt"] = ""
@@ -733,6 +788,7 @@ if args.compound:
         message='What compound script would you like to run?',
         choices=(
             Choice(value="optf+sp.cmp", name='optf+sp.cmp - Unconstrained opt., freq. calc., single point energy calc.'),
+            Choice(value="f+sp.cmp", name='f+sp.cmp  - freq. calc., single point energy calc.'),
             Choice(value="popt+saddle+sp.cmp", name='popt+saddle+sp.cmp  - Constrained opt., saddle point opt., freq. calc., single point energy calc.'),
         ),
         default="optf+sp.cmp",
@@ -792,7 +848,7 @@ auto_charges = False
 if '+' in allchars or '-' in allchars:
     auto_charges = inquirer.confirm(
         message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
-        default=False,
+        default=True,
     ).execute()
 
 # print options
@@ -834,8 +890,8 @@ if args.freqtemp:
 #################################################################################### WRITE INPs, PRINT JOB TABLE
 
 # start printing job table
-print(f'#    Filename                       Cores  Mem(GB)  Max cost (24h)')
-print( '------------------------------------------------------------------')
+table = f'#    Filename                       Cores  Mem(GB)  Charge  Mult    Max cost (24h)\n'
+table += '----------------------------------------------------------------------------------\n'
 
 for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
     rootname = filename.split('.')[0]
@@ -845,18 +901,8 @@ for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
     cum_cpu += procs
     cum_mem += options["mem"] * procs
 
-    print(f'{str(f+1):>3}  {filename:30s} {procs:2}     {options["mem"]*procs:d}       {cost:.2f} $')
-
     if auto_charges:
-        if '+' in rootname:
-            options['charge'] = 1
-            print(f'--> {filename} : assigned charge +1 based on input name')
-        elif '-' in rootname:
-            options['charge'] = -1
-            print(f'--> {filename} : assigned charge -1 based on input name')
-        else:
-            options['charge'] = 0
-            print(f'--> {filename} : assigned charge 0 based on input name')
+        options['charge'] = rootname.count("+") - rootname.count("-")
 
     if multiplicity_check(rootname, options["charge"]):
         options['mult'] = 1
@@ -864,7 +910,10 @@ for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
         options['mult'] = inquirer.text(
             message=f'It appears {rootname} is not a singlet. Please specify multiplicity:',
             validate=lambda inp: inp.isdigit() and int(inp) > 1,
+            default="2",
         ).execute()
+
+    table += f'{str(f+1):>3}  {filename:30s} {procs:2}     {options["mem"]*procs:d}      {options["charge"]:>2}       {options["mult"]}       {cost:.2f} $\n'
 
     if args.compound:
         s = get_comp_script_inp(rootname)
@@ -886,8 +935,9 @@ for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
     except FileNotFoundError:
         pass
 
-print( '------------------------------------------------------------------')
-print(f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n')
+table += '----------------------------------------------------------------------------------\n'
+table += f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n\n'
+print(table)
 
 run_jobs = inquirer.confirm(
         message="Run jobs for the newly generated input files?",
