@@ -1,17 +1,149 @@
 import random
 import re
+from time import perf_counter
 
 import numpy as np
-from bs4 import BeautifulSoup
 import pyscript as ps
+from bs4 import BeautifulSoup
 from js import window
-# import json
-from time import perf_counter
 
 # Set up a CORS proxy URL
 # cors_proxy_url = "https://corsproxy.io/?"
 cors_proxy_url = "https://corsproxy.io/?url="
 # cors_proxy_url = "http://api.allorigins.win/get?url="
+
+# outsourcing this to a different file is quite
+# a mess with pyiodide, so let's keep it here
+textblocks_list = [
+
+    {
+    "title" : "de Finibus Bonorum et Malorum",
+    "authors" : "Cicero",
+    "text" : "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+    },
+
+    {
+    "title" : "GLOSSARY OF TERMS USED IN PHYSICAL ORGANIC CHEMISTRY, 2nd Edition, 1994",
+    "authors" : "IUPAC",
+    "text" : "Synopsis. This glossary contains definitions and explanatory notes for terms used in the context of research and publications in physical organic chemistry. Its aim is to provide guidance on physical organic chemical terminology with a view to achieve a far-reaching consensus on the definitions of useful terms and on the abandonment of unsatisfactory ones. As a consequence of the development of physical organic chemistry, and of the increasing use of physical organic terminology in other fields of chemistry, the 1994 revision of the Glossary is much expanded in comparison to the previous edition, and it also includes terms from cognate fields. A few definitions have been refined, some others totally revised in the light of comments received from the scientific community."
+    },
+    
+        {
+    "title" : "ORCA 6.0.0 Manual",
+    "authors" : "Frank Neese and coworkers",
+    "text" : " ORCA 6.0 is a major turning point for the ORCA project and consequently, it seems appropriate to dwell a little bit on how we got to this point in this foreword. The ORCA program suite started its life around 1995 as a semi-empirical program written in Turbo Pascal and designed to calculate some magnetic and optical spectra of open-shell transition metal complexes in enzyme active sites. It was unimaginable at the time that it could possibly grow into a major, large-scale software that is used by tens or thousands of people world-wide."
+    },
+    
+    {
+    "title" : "Enantiocontrolled Cyclization to Form Chiral 7- and 8-Membered Rings Unified by the Same Catalyst Operating with Different Mechanisms",
+    "authors" : "N. Tampellini, B. Q. Mercado and S. J. Miller",
+    "text" : "Inherently chiral medium-sized rings, albeit displaying attractive properties for drug development, suffer from severe synthetic limitations due to challenging cyclization steps that form these unusually strained, atropisomeric rings from sterically crowded precursors. In fact, no enantioselective cyclization method is known for inherently chiral seven-membered rings. In this work, we present a substrate preorganization-based, enantioselective, organocatalytic strategy to construct seven- and eight-membered rings featuring inherent chirality under mild conditions and with high levels of stereocontrol. Notably, the same bifunctional iminophosphorane chiral catalyst orchestrates the cyclization of substrates of two different ring sizes, under two different mechanistic paradigms. We believe that the mechanistic and ring size generality of this method will guide further developments of general asymmetric catalysts and challenging cyclization reactions."
+    },
+    
+    {
+    "title" : "Scaffold-Oriented Asymmetric Catalysis: Conformational Modulation of Transition State Multivalency during a Catalyst Controlled Assembly of a Pharmaceutically Relevant Atropisomer",
+    "authors" : "N. Tampellini, B. Q. Mercado, and S. J. Miller* ",
+    "text" : "A new class of superbasic, bifunctional peptidyl guanidine catalysts is presented, which enables the organocatalytic, atroposelective synthesis of axially chiral quinazolinediones. Computational modeling unveiled the conformational modulation of the catalyst by a novel phenyl urea N-cap, that preorganizes the structure into the active, folded state. A previously unanticipated noncovalent interaction involving a difluoroacetamide acting as a hybrid mono- or bidentate hydrogen bond donor emerged as a decisive control element inducing atroposelectivity. These discoveries spurred from a scaffoldoriented project inspired from a fascinating investigational BTK inhibitor featuring two stable chiral axes and relies on a mechanistic framework that was foreign to the extant lexicon of asymmetric catalysis."
+    },
+    
+    {
+    "title" : "Privileged Chiral Catalysts",
+    "authors" : "T. P. Yoon and E. N. Jacobsen",
+    "text" : "Although the principles underlying asymmetric catalysis with enzymes and small molecules are fundamentally the same, some striking and rather surprising differences have been noted. William S. Knowles, a pioneer in small molecule asymmetric catalysis, made the following key observation in his Nobel address: “When we started this work we expected these man-made systems to have a highly specific match between substrate and ligand, just like enzymes. Generally, in our hands and in the hands of those that followed us, a good candidate has been useful for quite a range of applications”. Indeed, the best synthetic catalysts demonstrate useful levels of enantioselectivity for a wide range of substrates. This is very important to synthetic chemists, who must rely on the predictable behavior of reagents and catalysts when planning new syntheses. With a few important exceptions (such as certain lipases), such generality of scope is not observed in enzymatic catalysis."
+    },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+    # {
+    # "title" : "2",
+    # "authors" : "1",
+    # "text" : "3"
+    # },
+    
+
+]
 
 async def get_random_chemrxiv_paper():
 
@@ -278,3 +410,27 @@ async def scrape_chemrxiv(event):
     
     credits_div = ps.document.querySelector("#paper_credits")
     credits_div.innerText = f"from \"{title}\" by {authors}"
+
+def paste_random_textblock(event):
+
+    input_div = ps.document.querySelector("#text")
+    title, authors, input_div.innerText = get_random_textblock()
+
+    string = input_div.value.replace("\n", " ")
+
+    checkbox = ps.document.querySelector("#checkbox")
+    checkbox.checked = False
+
+    output_div = ps.document.querySelector("#output")
+    output_div.innerText, exit_code = get_haiku(string, contiguous=False, maxiter=1E4)
+
+    output_div_extra = ps.document.querySelector("#output_extra")
+    output_div_extra.innerText = ("",
+                                    "[no haiku present]",
+                                    "[max iterations reached, retry]")[exit_code]
+    
+    credits_div = ps.document.querySelector("#paper_credits")
+    credits_div.innerText = f"from \"{title}\" by {authors}"
+
+def get_random_textblock():
+    return random.choice(textblocks_list).values()

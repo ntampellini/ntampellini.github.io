@@ -85,7 +85,8 @@ Paste a block of text in the box below to extract random Haiku pieces from it.
 
 <div align="center">
     <button py-click="main" class="myButton">Get haiku</button>
-    <button py-click="scrape_chemrxiv" class="myButton">Scrape ChemRXiv</button>
+    <button py-click="paste_random_textblock" class="myButton">Paste random text</button>
+    <!-- <button py-click="scrape_chemrxiv" class="myButton">Scrape ChemRXiv</button> -->
 </div>
 
 <br>
