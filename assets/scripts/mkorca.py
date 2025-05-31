@@ -64,8 +64,8 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from rich.traceback import install
 
-from utils import (dihedral, norm_of, point_angle, pt, read_xyz,
-                   suppress_stdout_stderr)
+from utils import (all_dists, d_min_bond, dihedral, graphize, norm_of,
+                   point_angle, pt, read_xyz, suppress_stdout_stderr)
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
@@ -363,11 +363,65 @@ def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
         
     return est_d
 
-def inquire_constraints():
+def get_potential_ts_bonds(coords, atomnos, graph):
+    '''
+    Returns a list of Choice objects representing pairs of
+    atoms in the provided structure that have a distance
+    between low_ratio and high_ratio multiples of the sum
+    of their covalent radius, yet they are not bound.
+    '''
+    
+    low_ratio = 1.1
+    high_ratio = 1.45
+
+    potential_ts_bonds = []
+    for i1, dists in enumerate(all_dists(coords, coords)):
+        for i2, dist in enumerate(dists):
+            if i2 > i1 and ((i1, i2) not in graph.edges):
+                bondlength = d_min_bond(atomnos[i1], atomnos[i2], factor=1)
+                ratio = dist/bondlength
+                if low_ratio < ratio < high_ratio:
+                    # potential_ts_bonds.append((a1, a2))
+                    # print(f'{a1}-{a2} is {ratio:.2f} bond lengths')
+
+                    potential_ts_bonds.append(
+                        Choice(name=f"{pt[atomnos[i1]]}-{pt[atomnos[i2]]} bond, {dist:.3f} Å, {ratio:.2f}x sum of cov. radii", value=f"{i1} {i2} {dist:.2f}")
+                    )
+
+    return potential_ts_bonds
+
+def inquire_constraints(xyzname=None):
 
     c_type_dict = {"B":2, "A":3, "D":4}
 
     constraint_strings = []
+
+    if xyzname is not None:
+        mol = read_xyz(xyzname)
+        graph = graphize(mol.atomcoords[0], mol.atomnos)
+        suggested_constraints = get_potential_ts_bonds(mol.atomcoords[0], mol.atomnos, graph)
+        print(f"DEBUG ----> Found {len(suggested_constraints)} constraints")
+        if suggested_constraints:
+
+            while True:
+                c_string = inquirer.select(
+                    message="Found some ts-like distances. Would you like to constrain any of the following?",
+                    choices=([Choice(value=None, name='No')] + suggested_constraints),
+                    default=None,
+                ).execute()
+
+                if c_string is None:
+                    break
+
+                *indices, target = c_string.split()
+                # indices = " ".join(indices)
+
+                constraint_strings.append(('B', c_string))
+                global_constraints.append(Choice(value=Constraint(indices, target), name=f"B {c_string}"))
+
+                choice = suggested_constraints[[c.value for c in suggested_constraints].index(c_string)]
+                suggested_constraints.remove(choice)
+
     while True:
 
         c_type = inquirer.select(
@@ -378,7 +432,7 @@ def inquire_constraints():
                 Choice(value='A', name='Angle (3 indices, optional angle)'),
                 Choice(value='D', name='Dihedral (4 indices, optional dihedral)'),
             ),
-            default='B',
+            default=None if global_constraints else 'B',
         ).execute()
 
         if c_type is None:
@@ -657,6 +711,8 @@ for filename in args.inputfiles:
 if not args.inputfiles:
     raise Exception('No input structures selected. Please specify at least one.')
 
+xyzname = args.inputfiles[0] if len(args.inputfiles) else None
+
 set_auto_solvent()
 
 if not any((args.sp,
@@ -737,7 +793,7 @@ if args.popt:
     options["popt"] = True
     options["additional_kw"] += " Defgrid3"
 
-    inquire_constraints()
+    inquire_constraints(xyzname=xyzname)
 
 if args.scan:
     options["opt"] = "Opt"
@@ -803,7 +859,7 @@ if args.compound:
         raise Exception(f'Something went wrong when copying {options["compound_job_scriptname"]} to the destination folder.')
     
     if options["compound_job_scriptname"] == "popt+saddle+sp.cmp":
-        inquire_constraints()
+        inquire_constraints(xyzname=xyzname)
         inquire_ts_mode_following()
         options["comp_job_extra_variables"] = f'    extra_block_1 = \"{options["constr_block"]}\";\n    extra_block_2 = \"{options["extra_block"]}\";\n'
         options["freq"] = True
@@ -832,7 +888,7 @@ if args.goat:
                 message="Do you wish to specify any constraint?",
                 default=False,
             ).execute():
-        inquire_constraints()
+        inquire_constraints(xyzname=xyzname)
 
 if args.freqtemp:
     ans = inquirer.text(message="Specify the new temperature for the vibrational correction, in degrees Celsius:").execute()

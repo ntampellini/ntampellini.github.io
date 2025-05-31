@@ -4,6 +4,7 @@ import os
 
 import numpy as np
 from cclib.io import ccread
+from networkx import from_numpy_matrix, set_node_attributes
 from periodictable import core, covalent_radius, mass
 
 for pt_n in range(5):
@@ -14,6 +15,9 @@ for pt_n in range(5):
     except ValueError:
         continue
     break
+
+def d_min_bond(e1, e2, factor=1.2):
+    return factor * (pt[e1].covalent_radius + pt[e2].covalent_radius)
 
 class suppress_stdout_stderr(object):
     '''
@@ -141,3 +145,43 @@ def read_xyz(filename):
     mol = ccread(filename)
     assert mol is not None, f'Reading molecule {filename} failed - check its integrity.'
     return mol
+
+def all_dists(arr1, arr2):
+    '''
+    Returns an array with all the distances between vectors
+    in the two arrays.
+
+    '''
+    assert arr1.shape == arr2.shape
+    output = np.zeros((arr1.shape[0], arr1.shape[0]), dtype=float)
+
+    for i1, v1 in enumerate(arr1):
+        for i2, v2 in enumerate(arr2):
+            if i2 > i1:
+                output[i1][i2] = norm_of(v1-v2)
+
+    return output
+
+def graphize(coords, atomnos, mask=None):
+    '''
+    :params coords: atomic coordinates as 3D vectors
+    :params atomnos: atomic numbers as a list
+    :params mask: bool array, with False for atoms
+    to be excluded in the bond evaluation
+    :return connectivity graph
+    
+    '''
+
+    mask = np.array([True for _ in atomnos], dtype=bool) if mask is None else mask
+
+    matrix = np.zeros((len(coords),len(coords)))
+    for i, _ in enumerate(coords):
+        for j in range(i,len(coords)):
+            if mask[i] and mask[j]:
+                if norm_of(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
+                    matrix[i][j] = 1
+
+    graph = from_numpy_matrix(matrix)
+    set_node_attributes(graph, dict(enumerate(atomnos)), 'atomnos')
+
+    return graph

@@ -11,7 +11,11 @@ def get_procs(name, default=1):
     else:
         return int(lines[0].split()[1])
 
-def get_mem(name, safety_factor=1.333, default=8000):
+def get_mem(name, safety_factor=None, default=8000):
+    
+    if safety_factor is None:
+        safety_factor = 1.333
+    
     with open(name, "r") as f:
         lines = [line for line in f.readlines() if "%maxcore" in line]
     if len(lines) != 1:
@@ -35,6 +39,12 @@ def main(args):
         default='day',
     ).execute()
 
+    safety_factor = inquirer.text(
+        message="Memory safety factor? (MEM requested/MEM allowed ORCA to use)",
+        default="1.333",
+        filter=float,
+    ).execute()
+
     maxtime_string = {
         'day' : '0-24:00:00',
         'week': '7-00:00:00',
@@ -45,7 +55,7 @@ def main(args):
 
         basename = name.split(".")[0]
         procs = get_procs(basename+".inp")
-        mem = get_mem(basename+".inp")
+        mem = get_mem(basename+".inp", safety_factor=safety_factor)
 
         if basename not in done:
 
