@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "[Preview] Computational Dissection of a Generality-Oriented Oxoammonium Organocatalyst Optimization Campaign"
+title: "Computational Dissection of a Generality-Oriented Oxoammonium Organocatalyst Optimization Campaign"
 tags: [interactive, computational_chemistry, publication]
 ---
 
@@ -44,10 +44,10 @@ tags: [interactive, computational_chemistry, publication]
   }
 
   .iframe-parent{
-    max-width: min(95vw, 800px);
-    max-height: min(80vh, 500px);
+    max-width: min(90vw, 1000px);
+    max-height: min(80vh, 700px);
     width: 95vw;
-    height: 60vw;
+    height: 75vw;
     margin-left:auto;
     margin-right:auto;
   }
@@ -67,14 +67,14 @@ tags: [interactive, computational_chemistry, publication]
 
 <!-- CONTENT -->
 
-> Temporary page!
-
 > Click and drag to rotate, Ctrl+click/Mouse3 to move, scroll/right-click to zoom.
+
+This blog post contains interactive visualization for our computational analysis on the "Generality-oriented catalyst optimization: DFT modeling insights into the highly enantioselective meso-diol desymmetrization" <i>(manuscript in preparation)</i>.
 
 ### P1 to P3 (NMe<sub>2</sub> to NHMe)
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p1p3.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p1p3.jpg"/>
   <!-- <div align="center"><i><b>P1 to P3</b> - Description</i>.</div> -->
 </div>
 
@@ -91,7 +91,7 @@ tags: [interactive, computational_chemistry, publication]
 ### P2 to P4 (NMe<sub>2</sub> to NHMe)
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p2p4.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p2p4.jpg"/>
   <!-- <div align="center"><i><b>P2 to P4</b> - Description</i>.</div> -->
 </div>
 
@@ -108,7 +108,7 @@ tags: [interactive, computational_chemistry, publication]
 ### P3 to P4 (<sup>D</sup>Phe to <sup>L</sup>Phe)
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p3p4.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p3p4.jpg"/>
   <!-- <div align="center"><i><b>P3 to P4</b> - Description</i>.</div> -->
 </div>
 
@@ -125,7 +125,7 @@ tags: [interactive, computational_chemistry, publication]
 ### P4 to P5 (Pro to Pip)
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p4p5.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p4p5.jpg"/>
   <!-- <div align="center"><i><b>P1 to P3</b> - Description</i>.</div> -->
 </div>
 
@@ -139,10 +139,10 @@ tags: [interactive, computational_chemistry, publication]
 
 <br>
 
-### [P4 to P6 (NHMe to NHPFP, <u><i>not in the manuscript</i></u>)]
+### [P4 to P6 (NHMe to NHPFP, <i>not in the manuscript</i>)]
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p4p6.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p4p6.jpg"/>
   <!-- <div align="center"><i><b>P4 to P6</b> - Description</i>.</div> -->
 </div>
 
@@ -159,7 +159,7 @@ tags: [interactive, computational_chemistry, publication]
 ### P5 to P7 (Phe to Bip)
 
 <div>
-  <img style='height: 80vh; width: 80vw; object-fit: contain' src="/assets/generality_oriented_optimization/p5p7.jpg"/>
+  <img style='width: 70vw; max-width: 800px; object-fit: contain' src="/assets/generality_oriented_optimization/p5p7.jpg"/>
   <!-- <div align="center"><i><b>P5 to P7</b> - Description</i>.</div> -->
 </div>
 

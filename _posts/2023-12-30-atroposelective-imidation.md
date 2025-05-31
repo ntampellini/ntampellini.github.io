@@ -44,10 +44,10 @@ tags: [interactive, computational_chemistry, publication]
   }
 
   .iframe-parent{
-    max-width: min(95vw, 800px);
-    max-height: min(80vh, 500px);
+    max-width: min(90vw, 1000px);
+    max-height: min(80vh, 700px);
     width: 95vw;
-    height: 60vw;
+    height: 75vw;
     margin-left:auto;
     margin-right:auto;
   }
@@ -63,11 +63,13 @@ tags: [interactive, computational_chemistry, publication]
 
 > This post summarizes and adds interactive visualizations on the development of a novel superbasic peptidyl guanidine catalyst able to affect the atroposelective imidation of quinazolinediones. The full paper, previously on ChemRXiv[^chemrxiv] is now published in Chemistry, a European Journal.[^ChemEurJ]
 
+> Click and drag to rotate, Ctrl+click/Mouse3 to move, scroll/right-click to zoom.
+
 Over the last ten years, we surely have become more used to seeing drug molecules featuring elements of axial chirality. Still, if a chiral axis is not something that turns heads anymore, a drug molecule featuring _two_ is sure to be a different story. Particularly if both these elements are precisely controlled during the process route and the drug is developed as a single, stable stereoisomer. This is the case for BMS-986142, an investigational BTK (Bruton's Tyrosine Kinase) inhibitor from Bristol Myers Squibb.[^BMSBTK]
 
 <div class="img1cm">
   <!-- <img style='height: 40%; width: 40%; object-fit: contain' src="BMS.png"/> -->
-  <img style='height: 20rem; width: 20rem; object-fit: contain' src="/assets/atroposelective_imidation/BMS.png"/>
+  <img style='width: 70vw; max-width: 400px; object-fit: contain' src="/assets/atroposelective_imidation/BMS.png"/>
   <br>
   <div align="center"><i><b>BMS-986142</b> - Investigational BTK inhibitor (leukemia treatment)</i>.</div>
 </div>
@@ -77,14 +79,14 @@ The remarkable process route[^BMSBTK] starts by installing the <span class="ured
 This perspective set us out to seek a different solution for this problem, given the now increasing presence of chiral axes in medicinally relevant, heterocyclic scaffolds. Our vision was to develop an atroposelective, organocatalytic method to confer complete catalyst control over the formation of the C-N chiral axis. Inspired by BMS-986142's process route, we inquired on adopting a chiral superbase to affect the cyclization of a benzamide carbamate to a quinazolinedione. Our choice of a catalytic moiety eventually converged on tetramethylguanidines.
 
 <div class="img1cm">
-  <img style='height: 95%; width: 95%; object-fit: contain' src="/assets/atroposelective_imidation/strategy.png"/>
+  <img style='width: 70vw; max-width: 900px; object-fit: contain' src="/assets/atroposelective_imidation/strategy.png"/>
   <div align="center"><i>Atroposelective imidation strategy.</i></div>
 </div>
 
 Following extensive catalyst optimization, we were able to obtain a selective and specific catalyst, featuring novel and unusual key elements. Here is a sketch of the transformation and the lead catalyst.
 
 <div class="img1cm">
-  <img style='height: 95%; width: 95%; object-fit: contain' src="/assets/atroposelective_imidation/reaction.png"/>
+  <img style='width: 70vw; max-width: 900px; object-fit: contain' src="/assets/atroposelective_imidation/reaction.png"/>
 </div>
 
 Intrigued by the catalyst novelty, specificity, and the multi-step nature of the reaction, we decided to take a deep dive into the reaction mechanism with the help of DFT. First, we uncovered a conformational equilibrium of the catalyst between a _hairpin_ and a _folded_ form. While the former is the canonical β-turn, β-hairpin conformation, featuring a roughly planar arrangement of the four amino acid residues, the latter _folded_ conformation features an additional internal hydrogen bond, conferring the structure a helical, three-dimensional character. More importantly, the _hairpin_ foldamer features a hydrogen bond between the guanidine and the difluoroacetyl group on proline, while the _folded_ state does not. We believe that this effect explains why previous generations of the catalyst were suddenly completely inactive: they were heavily favoring the _hairpin_ conformer, where the active guanidine residue was masked and not available for catalysis. Below you can find an animation connecting the two aforementioned conformers.
@@ -106,7 +108,7 @@ Intrigued by the catalyst novelty, specificity, and the multi-step nature of the
 Moving on to the transformation, we devised a large reaction space to be characterized computationally, and we ended up modeling the two reaction steps (addition and elimination) through ten different activation modes across four substrate stereoisomers and two catalyst foldamers, for a total of ~400 transition states. After achieving a solid alignment with the experimental results, we started looking for the selectivity-defining factors. An initial, striking observation we made was that the four productive transition states leading to the two enantiomers of the product **all featured topologically different transition states**. Each enantiomer of the product is formed via a different diastereoisomer and features a unique activation mode for each of the two reaction steps. Moreover, each enantiomer of the product also has a different rate-determining step!
 
 <div class="img1cm">
-  <img style='height: 100%; width: 100%; object-fit: contain' src="/assets/atroposelective_imidation/PES.png"/>
+  <img style='width: 70vw; max-width: 900px; object-fit: contain' src="/assets/atroposelective_imidation/PES.png"/>
 
   <div align="center"><i>Productive potential energy surface of the reaction. Energetic data at the M06-2X/def2-QZVP/CPCM(PhCF<sub>3</sub>)//R<sup>2</sup>SCAN-3c/CPCM(PhCF<sub>3</sub>) level.</i></div>
 </div>

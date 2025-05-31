@@ -70,32 +70,7 @@ Small library of Python functions required by some of these scripts.
 
     Makes one or more ORCA inputs following the desired specifications. Syntax:
 
-      python mkorca.py conf*.xyz [option]
-
-    conf*.xyz: base name of input geometry file(s)
-    option:
-      sp:     single-point energy calculation
-      fastsp: fast single-point energy calculation
-      optf:   optimization + frequency calculation
-      popt:   partial optimization (specify distance constraint)
-      ts:     eigenvector-following saddle point optimization
-      nmr:    single-point energy calculation with NMR shieldings.
-
-    Each of these options might have different default levels of theory.
-    Manually check/modify this script at your convenience.
-
-<br>
-
-<a href="/assets/scripts/mkorcascan.py" class="myButton"
-   title="Download script file">mkorcascan.py</a>
-
-    Makes an ORCA input file for a distance scan. Syntax:
-
-      python mkorcascan.py filename.xyz i1 i2 target
-
-    filename.xyz: base name of input geometry file
-    i1/i2: indices of atoms to scan
-    target: desired distance between indices at end of scan
+      python mkorca.py conf*.xyz
 
 <br>
 
@@ -105,7 +80,7 @@ Small library of Python functions required by some of these scripts.
     Check running and completed ORCA jobs and prints/plots relevant information.
     For scans, also extracts local maxima structures. Syntax:
 
-      python check.py filename[.out] [i1] [i2] [zoom]
+      python check.py [filename[.out]] [i1] [i2] [zoom]
 
     filename: base name of input/output file (with or without extension)
     i1/i2: optional, plot i1-i2 distance during optimization steps
@@ -119,14 +94,8 @@ Small library of Python functions required by some of these scripts.
     Compare completed ORCA jobs electronic/free energy of groups of jobs and
     prints collected energy values. Syntax:
 
-      python compare.py conf*.out [g] [x=folder/file.xyz]
+      python compare.py conf*.out
            
-    conf*.out: base name of output file(s)
-    g: optional, uses free energy for the comparison (needs freq calculations)
-    x: extract conformers from the specified files, removing duplicates
-       (similarity pruning via TSCoDe) and high-energy conformers
-       (5 kcal/mol threshold)
-
 <br>
 
 <a href="/assets/scripts/update.py" class="myButton"

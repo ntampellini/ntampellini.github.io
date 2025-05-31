@@ -1,0 +1,56 @@
+<div id="3dmolviewer_1748699079736064"  style="position: relative; width: 95vw; height: 95vh">
+        <p id="3dmolwarning_1748699079736064" style="background-color:#ffcccc;color:black">3Dmol.js failed to load for some reason.  Please check your browser console for error messages.<br></p>
+        </div>
+<script>
+
+var loadScriptAsync = function(uri){
+  return new Promise((resolve, reject) => {
+    //this is to ignore the existence of requirejs amd
+    var savedexports, savedmodule;
+    if (typeof exports !== 'undefined') savedexports = exports;
+    else exports = {}
+    if (typeof module !== 'undefined') savedmodule = module;
+    else module = {}
+
+    var tag = document.createElement('script');
+    tag.src = uri;
+    tag.async = true;
+    tag.onload = () => {
+        exports = savedexports;
+        module = savedmodule;
+        resolve();
+    };
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+});
+};
+
+if(typeof $3Dmolpromise === 'undefined') {
+$3Dmolpromise = null;
+  $3Dmolpromise = loadScriptAsync('https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js');
+}
+
+var viewer_1748699079736064 = null;
+var warn = document.getElementById("3dmolwarning_1748699079736064");
+if(warn) {
+    warn.parentNode.removeChild(warn);
+}
+$3Dmolpromise.then(function() {
+viewer_1748699079736064 = $3Dmol.createViewer(document.getElementById("3dmolviewer_1748699079736064"),{backgroundColor:"white"});
+viewer_1748699079736064.zoomTo();
+	viewer_1748699079736064.addModel("85\ntemp\nO     -2.339450  1.781324  1.199697\nC     -2.577082  0.615123  1.560381\nN     -2.676596  0.265484  2.850912\nC     -2.476512  1.255552  3.939649\nC     -2.385149  0.342656  5.186894\nC     -3.288144 -0.843006  4.839705\nC     -2.990367 -1.088501  3.361707\nC     -3.661094  2.215964  4.029098\nC     -1.154257  2.036318  3.778188\nN     -0.112624  1.326304  3.268658\nC      1.186885  1.895520  3.080049\nC      2.013232  2.192824  4.312159\nC      2.366478  1.021082  3.461021\nC      1.401673  2.793278  1.897631\nN      0.355217  2.962017  1.056721\nC      0.523824  3.781166 -0.119831\nN      1.378478  3.138450 -1.118482\nS      0.802705  2.943538 -2.681089\nC      0.774249  4.557871 -3.459041\nC      1.942579  5.051082 -4.034030\nC      1.928530  6.331556 -4.574819\nC      0.764754  7.098057 -4.533126\nC     -0.394777  6.586262 -3.956078\nC     -0.399066  5.305249 -3.411860\nO      1.826099  2.132862 -3.370640\nO     -0.584405  2.470661 -2.562928\nC      1.078447  5.179355  0.217526\nO      0.456473  5.688814  1.278279\nC      0.886600  7.015555  1.678347\nO      1.910032  5.752462 -0.450930\nO      2.486248  3.348847  1.692498\nO     -1.048466  3.193997  4.170351\nC     -2.732391 -0.478048  0.498949\nC     -1.625507 -0.329975 -0.551505\nC     -0.254070 -0.426985  0.080886\nO      0.677044 -0.000678 -0.727566\nO      2.206425 -0.246199 -0.082263\nH      1.905811 -0.504074  0.818602\nO     -0.055447 -0.861869  1.215693\nN     -4.051382 -0.344980 -0.096928\nC     -4.627259 -1.423309 -0.718861\nO     -5.696877 -1.016342 -1.430364\nC     -6.576474 -1.996814 -2.112144\nC     -7.624804 -1.097411 -2.756042\nC     -5.797599 -2.757089 -3.178682\nC     -7.215939 -2.921400 -1.083422\nO     -4.224186 -2.571256 -0.602245\nH     -0.276941  0.408417  2.870338\nH     -0.543717  2.510209  1.207635\nH      2.338419  3.480190 -1.111335\nH     -4.323139  0.574104 -0.421471\nS      4.499890 -0.765590  0.620928\nC      7.692589 -3.948294  1.223318\nC      5.193383 -0.872774 -1.089293\nC      6.623769 -3.062160  1.319555\nC      4.246869 -0.463832 -2.207183\nF     -3.275291 -0.998433 -5.625900\nO      3.237496 -2.652482 -2.132107\nC      3.137138 -1.472273 -2.452524\nF     -1.167669 -4.597058 -1.140922\nN      2.058239 -0.946201 -3.113263\nC      7.504474 -5.221885  0.690791\nH      2.081675  0.058086 -3.268536\nC      0.805535 -1.526993 -3.316562\nC      5.349899 -3.440742  0.887722\nC     -0.155259 -0.734039 -3.964466\nC      4.133294 -2.549089  1.006972\nC      0.449534 -2.800442 -2.865453\nC     -1.443156 -1.208226 -4.139030\nC     -0.857172 -3.248915 -3.057906\nC      3.476927 -2.573237  2.371907\nC     -2.494785 -0.324776 -4.746177\nF     -2.459648 -4.991557 -2.848567\nC      2.117246 -2.876491  2.464961\nC     -1.818705 -2.474912 -3.690034\nC     -1.217223 -4.597079 -2.499511\nC      4.192205 -2.291653  3.540438\nF     -3.331033  0.169896 -3.792001\nC      1.480538 -2.901241  3.703750\nC      6.240479 -5.601701  0.247054\nC      3.556689 -2.317843  4.777003\nC      5.171896 -4.714649  0.340990\nC      2.198674 -2.623690  4.863026\nF     -1.976054  0.734805 -5.400018\nF     -0.359147 -5.561796 -2.914249\n","xyz");
+	viewer_1748699079736064.setStyle({"stick": {"radius": 0.12}, "sphere": {"scale": 0.14}});
+	viewer_1748699079736064.setStyle({"elem": "F"},{"stick": {"radius": 0.12, "color": "aquamarine"}, "sphere": {"scale": 0.14, "color": "aquamarine"}});
+	viewer_1748699079736064.setStyle({"elem": "S"},{"stick": {"radius": 0.12, "color": "yellow"}, "sphere": {"scale": 0.14, "color": "yellow"}});
+	viewer_1748699079736064.setStyle({"elem": "I"},{"stick": {"radius": 0.12, "color": "#8747FF"}, "sphere": {"scale": 0.14, "color": "#8747FF"}});
+	viewer_1748699079736064.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -0.055447, "y": -0.861869, "z": 1.215693}, "end": {"x": -0.276941, "y": 0.408417, "z": 2.870338}});
+	viewer_1748699079736064.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -2.33945, "y": 1.781324, "z": 1.199697}, "end": {"x": -0.543717, "y": 2.510209, "z": 1.207635}});
+	viewer_1748699079736064.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": 1.905811, "y": -0.504074, "z": 0.818602}, "end": {"x": -0.055447, "y": -0.861869, "z": 1.215693}});
+	viewer_1748699079736064.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": 1.826099, "y": 2.132862, "z": -3.37064}, "end": {"x": 2.081675, "y": 0.058086, "z": -3.268536}});
+	viewer_1748699079736064.addCylinder({"alpha": 0.75, "radius": 0.12, "fromCap": "round", "toCap": "round", "color": "rgb(255, 195, 135)", "start": {"x": 0.677044, "y": -0.000678, "z": -0.727566}, "end": {"x": 2.206425, "y": -0.246199, "z": -0.082263}});
+	viewer_1748699079736064.addCylinder({"alpha": 0.75, "radius": 0.12, "fromCap": "round", "toCap": "round", "color": "rgb(255, 195, 135)", "start": {"x": 2.206425, "y": -0.246199, "z": -0.082263}, "end": {"x": 4.49989, "y": -0.76559, "z": 0.620928}});
+	viewer_1748699079736064.enableFog(true);
+	viewer_1748699079736064.zoomTo();
+viewer_1748699079736064.render();
+});
+</script>
