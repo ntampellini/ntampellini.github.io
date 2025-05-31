@@ -11,21 +11,21 @@ entries:
     url: false
     entires: false
 
-  - title: energy converter
-    url: /energy_converter
-    entries: false
+  # - title: energy converter
+  #   url: /energy_converter
+  #   entries: false
 
-  - title: scripts
-    url: /scripts
-    entries: false
+  # - title: scripts
+  #   url: /scripts
+  #   entries: false
 
-  - title: haiku
-    url: /haiku
-    entries: false
+  # - title: haiku
+  #   url: /haiku
+  #   entries: false
 
-  - title: about
-    url: /about
-    entries: false
+  # - title: about
+  #   url: /about
+  #   entries: false
     
   # - title: lists of awesome things
   #   url: false
