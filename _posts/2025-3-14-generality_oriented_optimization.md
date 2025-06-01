@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Computational Dissection of a Generality-Oriented Oxoammonium Organocatalyst Optimization Campaign"
+title: "Computational analysis of a Generality-Oriented Optimization Campaign"
 tags: [interactive, computational_chemistry, publication]
 ---
 

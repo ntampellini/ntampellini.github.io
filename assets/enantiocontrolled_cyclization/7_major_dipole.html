@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+    <div id="3dmolviewer" style="position: relative; width: 95vw; height: 95vh;">
+        <p id="3dmolwarning" style="background-color:#ffcccc;color:black">3Dmol.js failed to load for some reason. Please check your browser console for error messages.<br></p>
+    </div>
+
+<script>
+var loadScriptAsync = function(uri){
+  return new Promise((resolve, reject) => {
+    //this is to ignore the existence of requirejs amd
+    var savedexports, savedmodule;
+    if (typeof exports !== 'undefined') savedexports = exports;
+    else exports = {}
+    if (typeof module !== 'undefined') savedmodule = module;
+    else module = {}
+
+    var tag = document.createElement('script');
+    tag.src = uri;
+    tag.async = true;
+    tag.onload = () => {
+        exports = savedexports;
+        module = savedmodule;
+        resolve();
+    };
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+});
+};
+
+if(typeof $3Dmolpromise === 'undefined') {
+$3Dmolpromise = null;
+  $3Dmolpromise = loadScriptAsync('https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js');
+}
+
+var viewer = null;
+var toggleableModelIds = []; // Store multiple model IDs for toggling
+var toggleableShapes = []; // Store multiple shapes for toggling
+var toggleableShapes_opacity = []; // Store initial opacity
+var toggleableLabels = []; // Store multiple labels for toggling
+
+
+var warn = document.getElementById("3dmolwarning");
+if(warn) {
+    warn.parentNode.removeChild(warn);
+}
+
+$3Dmolpromise.then(function() {
+    viewer = $3Dmol.createViewer(document.getElementById("3dmolviewer"),{backgroundColor:"white"});
+    viewer.zoomTo();
+    
+    // Add main model
+    viewer.addModel("109\ntemp\nC     -0.688441  0.513290  5.356486\nC      0.081588  1.627311  4.637477\nC     -0.521742  2.987948  5.017819\nC      1.552971  1.602168  5.079458\nC      0.010855  1.491257  3.088555\nN     -1.372559  1.504176  2.599057\nC     -1.852653  2.556651  1.948935\nC     -1.232841  3.807273  1.467068\nC     -2.575976  4.212462  0.931370\nO     -3.029914  5.167429  0.302530\nO     -0.101852  4.281496  1.473733\nC     -3.119342  2.937188  1.434142\nN     -4.332092  2.390075  1.410481\nC     -5.461250  3.069276  0.750183\nC     -6.793590  2.879796  1.507116\nC     -7.189607  1.409161  1.688727\nC     -6.645646  3.533677  2.890250\nC     -7.881821  3.619404  0.715414\nC     -5.454425  2.634829 -0.734359\nN     -4.614247  3.386262 -1.483892\nC     -4.124278  2.945153 -2.788773\nC     -2.627824  3.239948 -2.825101\nC     -1.810175  2.584918 -1.897661\nC     -0.458100  2.885824 -1.812305\nC      0.103405  3.829548 -2.670509\nC     -0.697299  4.461947 -3.615504\nC     -2.060824  4.174434 -3.688688\nC     -4.896379  3.530427 -3.953582\nC     -4.933823  2.829402 -5.160355\nC     -5.593972  3.356416 -6.265414\nC     -6.228212  4.593978 -6.174023\nC     -6.197812  5.295331 -4.971947\nC     -5.534875  4.766303 -3.866647\nO     -6.066645  1.663023 -1.172783\nC      0.772110  0.284815  2.527761\nN      0.684773  0.265226  1.053638\nP      1.980232 -0.225794  0.152506\nH     -1.980612  0.705482  2.764959\nH     -4.452647  1.435706  1.745988\nH     -4.121224  4.155654 -1.032609\nC      3.263027 -4.004140 -0.705063\nC      3.430852 -4.526224  0.578559\nC      3.142195 -3.798142  1.742233\nC      3.446583 -4.385552  3.122886\nC      2.661668 -2.498547  1.598155\nC      2.484977 -1.954264  0.321310\nC      2.782312 -2.696749 -0.818902\nC      4.246914  3.016346  1.072668\nC      3.160252  2.170331  0.844738\nC      3.373856  0.805531  0.637273\nC      4.657336  0.264659  0.655151\nC      5.761213  1.088589  0.882616\nC      5.529794  2.452325  1.086018\nC      2.461458  0.781816 -3.748435\nC      2.621706  0.663303 -2.363118\nC      1.637655  0.053431 -1.593567\nC      0.465279 -0.442672 -2.177501\nC      0.272501 -0.314526 -3.549216\nC      1.287691  0.288342 -4.309978\nH     -0.249881 -0.009951  0.701217\nC      2.632281 -3.695391  4.227859\nC      4.947836 -4.166539  3.402156\nC      3.143939 -5.893049  3.168719\nC      3.680438 -4.777373 -1.957907\nC      5.105259 -4.316273 -2.329935\nC      3.688300 -6.293990 -1.717841\nC      2.736221 -4.481100 -3.136882\nC      3.580683  1.419661 -4.572821\nC     -0.982262 -0.831057 -4.254041\nC      3.246348  1.469964 -6.067518\nC      3.823131  2.859146 -4.080568\nC      4.867964  0.591418 -4.386920\nC     -2.041929 -1.319888 -3.260753\nC     -0.584819 -2.003900 -5.171408\nC     -1.604400  0.298346 -5.097709\nC      7.161887  0.473880  0.877622\nC      4.002196  4.509828  1.296724\nC      8.253874  1.504049  1.186789\nC      7.435945 -0.126035 -0.516017\nC      7.231500 -0.643421  1.936709\nC      3.187014  5.076787  0.117326\nC      5.308758  5.304081  1.409195\nC      3.202392  4.689584  2.602104\nO     -6.000940 -1.744066  2.937952\nO     -1.906808 -0.405492  0.193411\nC     -1.758977 -2.799030  2.459494\nC     -1.201330 -3.956150  3.068450\nC     -4.290200 -1.601781  4.989021\nC     -2.393222 -1.532971  0.386074\nC     -1.637398 -2.647209  1.044549\nC     -0.608488 -4.928309  2.306439\nS     -4.555837 -1.558110  3.205391\nC     -1.036157 -3.630828  0.294176\nC     -0.497410 -4.763585  0.915759\nN     -3.706615 -2.884918  2.704134\nN      0.142437 -5.763648  0.128282\nN     -3.648452 -1.864386  0.016296\nC     -4.551301 -0.865173 -0.562660\nO     -3.987293 -0.249952  2.746081\nC     -4.265225 -3.618044  1.632523\nC     -4.187230 -3.159185  0.304732\nC     -4.906322 -5.395077  3.299361\nC     -4.811307 -4.889376  1.889203\nC     -4.669690 -3.931053 -0.748522\nC     -5.283869 -5.651168  0.821024\nC     -5.217924 -5.178873 -0.486743\nF     -1.635989 -1.651387  3.228906\nO      0.194295 -5.611465 -1.102757\nO      0.628732 -6.752797  0.699165\n","xyz");
+    viewer.setStyle({"stick": {"radius": 0.12}, "sphere": {"scale": 0.14}});	
+    viewer.setStyle({"elem": "F"},{"stick": {"radius": 0.12, "color": "aquamarine"}, "sphere": {"scale": 0.14, "color": "aquamarine"}});
+    viewer.setStyle({"elem": "S"},{"stick": {"radius": 0.12, "color": "yellow"}, "sphere": {"scale": 0.14, "color": "yellow"}});
+    viewer.setStyle({"elem": "I"},{"stick": {"radius": 0.12, "color": "#8747FF"}, "sphere": {"scale": 0.14, "color": "#8747FF"}});
+    
+    // NCIs
+    viewer.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -1.980612, "y": 0.705482, "z": 2.764959}, "end": {"x": -3.987293, "y": -0.249952, "z": 2.746081}});
+    viewer.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -1.980612, "y": 0.705482, "z": 2.764959}, "end": {"x": -1.635989, "y": -1.651387, "z": 3.228906}});
+    viewer.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -4.452647, "y": 1.435706, "z": 1.745988}, "end": {"x": -3.987293, "y": -0.249952, "z": 2.746081}});
+    viewer.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -3.029914, "y": 5.167429, "z": 0.30253}, "end": {"x": -4.121224, "y": 4.155654, "z": -1.032609}});
+    viewer.addCylinder({"gapLength": 0.5, "alpha": 0.75, "radius": 0.075, "fromCap": "round", "toCap": "round", "dashed": true, "color": "rgb(255, 195, 135)", "start": {"x": -0.249881, "y": -0.009951, "z": 0.701217}, "end": {"x": -1.906808, "y": -0.405492, "z": 0.193411}});
+    viewer.addCylinder({"alpha": 0.75, "radius": 0.12, "fromCap": "round", "toCap": "round", "color": "rgb(255, 195, 135)", "start": {"x": -1.758977, "y": -2.79903, "z": 2.459494}, "end": {"x": -3.706615, "y": -2.884918, "z": 2.704134}});
+    
+    viewer.enableFog(true);
+    viewer.zoomTo();
+    
+    // Add multiple toggleable elements
+    var s1 = viewer.addArrow({"start": {"x": 3.404188474583506, "y": -2.1173907562102836, "z": 1.108380426831191}, "end": {"x": -1.884345793019261, "y": 3.677532532746596, "z": -1.837996851412197}, "radius": 0.3, "radiusRatio": 1.5, "mid": 0.85, "color": "rgb(232, 111, 136)", "alpha": 0.75});
+    toggleableShapes.push(s1);
+    toggleableShapes_opacity.push(s1.opacity)
+    
+    var s2 = viewer.addArrow({"start": {"x": -0.9982090362407776, "y": -0.9934928645864325, "z": 0.47385181667416076}, "end": {"x": -5.637201988149466, "y": -5.817860647608688, "z": 2.711550524789253}, "radius": 0.3, "radiusRatio": 1.5, "mid": 0.85, "color": "rgb(100, 200, 200)", "alpha": 0.75});
+    toggleableShapes.push(s2);
+    toggleableShapes_opacity.push(s2.opacity)
+    
+    var s3 = viewer.addArrow({"start": {"x": 4.9637635824830015, "y": -0.4852780166036775, "z": 0.35433963960960335}, "end": {"x": -4.963763637028458, "y": 0.4852774893309499, "z": -0.3543389305186945}, "radius": 0.3, "radiusRatio": 1.5, "mid": 0.85, "color": "rgb(235, 235, 235)", "alpha": 0.75});
+    toggleableShapes.push(s3);
+    toggleableShapes_opacity.push(s3.opacity)
+
+    // highlight models
+    var id1 = viewer.addModel("83\ntemp\nC     -0.688441  0.513290  5.356486\nC      0.081588  1.627311  4.637477\nC     -0.521742  2.987948  5.017819\nC      1.552971  1.602168  5.079458\nC      0.010855  1.491257  3.088555\nN     -1.372559  1.504176  2.599057\nC     -1.852653  2.556651  1.948935\nC     -1.232841  3.807273  1.467068\nC     -2.575976  4.212462  0.931370\nO     -3.029914  5.167429  0.302530\nO     -0.101852  4.281496  1.473733\nC     -3.119342  2.937188  1.434142\nN     -4.332092  2.390075  1.410481\nC     -5.461250  3.069276  0.750183\nC     -6.793590  2.879796  1.507116\nC     -7.189607  1.409161  1.688727\nC     -6.645646  3.533677  2.890250\nC     -7.881821  3.619404  0.715414\nC     -5.454425  2.634829 -0.734359\nN     -4.614247  3.386262 -1.483892\nC     -4.124278  2.945153 -2.788773\nC     -2.627824  3.239948 -2.825101\nC     -1.810175  2.584918 -1.897661\nC     -0.458100  2.885824 -1.812305\nC      0.103405  3.829548 -2.670509\nC     -0.697299  4.461947 -3.615504\nC     -2.060824  4.174434 -3.688688\nC     -4.896379  3.530427 -3.953582\nC     -4.933823  2.829402 -5.160355\nC     -5.593972  3.356416 -6.265414\nC     -6.228212  4.593978 -6.174023\nC     -6.197812  5.295331 -4.971947\nC     -5.534875  4.766303 -3.866647\nO     -6.066645  1.663023 -1.172783\nC      0.772110  0.284815  2.527761\nN      0.684773  0.265226  1.053638\nP      1.980232 -0.225794  0.152506\nH     -1.980612  0.705482  2.764959\nH     -4.452647  1.435706  1.745988\nH     -4.121224  4.155654 -1.032609\nC      3.263027 -4.004140 -0.705063\nC      3.430852 -4.526224  0.578559\nC      3.142195 -3.798142  1.742233\nC      3.446583 -4.385552  3.122886\nC      2.661668 -2.498547  1.598155\nC      2.484977 -1.954264  0.321310\nC      2.782312 -2.696749 -0.818902\nC      4.246914  3.016346  1.072668\nC      3.160252  2.170331  0.844738\nC      3.373856  0.805531  0.637273\nC      4.657336  0.264659  0.655151\nC      5.761213  1.088589  0.882616\nC      5.529794  2.452325  1.086018\nC      2.461458  0.781816 -3.748435\nC      2.621706  0.663303 -2.363118\nC      1.637655  0.053431 -1.593567\nC      0.465279 -0.442672 -2.177501\nC      0.272501 -0.314526 -3.549216\nC      1.287691  0.288342 -4.309978\nH     -0.249881 -0.009951  0.701217\nC      2.632281 -3.695391  4.227859\nC      4.947836 -4.166539  3.402156\nC      3.143939 -5.893049  3.168719\nC      3.680438 -4.777373 -1.957907\nC      5.105259 -4.316273 -2.329935\nC      3.688300 -6.293990 -1.717841\nC      2.736221 -4.481100 -3.136882\nC      3.580683  1.419661 -4.572821\nC     -0.982262 -0.831057 -4.254041\nC      3.246348  1.469964 -6.067518\nC      3.823131  2.859146 -4.080568\nC      4.867964  0.591418 -4.386920\nC     -2.041929 -1.319888 -3.260753\nC     -0.584819 -2.003900 -5.171408\nC     -1.604400  0.298346 -5.097709\nC      7.161887  0.473880  0.877622\nC      4.002196  4.509828  1.296724\nC      8.253874  1.504049  1.186789\nC      7.435945 -0.126035 -0.516017\nC      7.231500 -0.643421  1.936709\nC      3.187014  5.076787  0.117326\nC      5.308758  5.304081  1.409195\nC      3.202392  4.689584  2.602104\n","xyz");
+    viewer.addStyle({"model": 1},{"stick": {"radius": 0.1596, "opacity": 0.5, "color": "rgb(232, 111, 136)"}, "sphere": {"scale": 0.18620000000000003, "opacity": 0.5, "color": "rgb(232, 111, 136)"}});
+    toggleableModelIds.push(id1);
+
+    var id2 = viewer.addModel("26\ntemp\nO     -6.000940 -1.744066  2.937952\nO     -1.906808 -0.405492  0.193411\nC     -1.758977 -2.799030  2.459494\nC     -1.201330 -3.956150  3.068450\nC     -4.290200 -1.601781  4.989021\nC     -2.393222 -1.532971  0.386074\nC     -1.637398 -2.647209  1.044549\nC     -0.608488 -4.928309  2.306439\nS     -4.555837 -1.558110  3.205391\nC     -1.036157 -3.630828  0.294176\nC     -0.497410 -4.763585  0.915759\nN     -3.706615 -2.884918  2.704134\nN      0.142437 -5.763648  0.128282\nN     -3.648452 -1.864386  0.016296\nC     -4.551301 -0.865173 -0.562660\nO     -3.987293 -0.249952  2.746081\nC     -4.265225 -3.618044  1.632523\nC     -4.187230 -3.159185  0.304732\nC     -4.906322 -5.395077  3.299361\nC     -4.811307 -4.889376  1.889203\nC     -4.669690 -3.931053 -0.748522\nC     -5.283869 -5.651168  0.821024\nC     -5.217924 -5.178873 -0.486743\nF     -1.635989 -1.651387  3.228906\nO      0.194295 -5.611465 -1.102757\nO      0.628732 -6.752797  0.699165\n","xyz");
+	  viewer.addStyle({"model": 2},{"stick": {"radius": 0.1596, "opacity": 0.5, "color": "rgb(100, 200, 200)"}, "sphere": {"scale": 0.18620000000000003, "opacity": 0.5, "color": "rgb(100, 200, 200)"}});
+    toggleableModelIds.push(id2);
+
+    var l1 = viewer.addLabel("\u03bc_cat",{"position": {"x": 3.404188474583506, "y": -2.1173907562102836, "z": 1.108380426831191}, "backgroundColor": "rgb(50, 50, 50)", "backgroundOpacity": 0.8, "fontColor": "rgb(232, 111, 136)", "fontSize": 24, "fontOpacity": 1, "font": "Palatino Linotype"});
+    var l2 = viewer.addLabel("\u03bc_sub",{"position": {"x": -0.9982090362407776, "y": -0.9934928645864325, "z": 0.47385181667416076}, "backgroundColor": "rgb(50, 50, 50)", "backgroundOpacity": 0.8, "fontColor": "rgb(100, 200, 200)", "fontSize": 24, "fontOpacity": 1, "font": "Palatino Linotype"});
+    var l3 = viewer.addLabel("\u03bc_tot",{"position": {"x": 4.9637635824830015, "y": -0.4852780166036775, "z": 0.35433963960960335}, "backgroundColor": "rgb(50, 50, 50)", "backgroundOpacity": 0.8, "fontColor": "rgb(235, 235, 235)", "fontSize": 24, "fontOpacity": 1, "font": "Palatino Linotype"});
+    toggleableLabels.push(l1);
+    toggleableLabels.push(l2);
+    toggleableLabels.push(l3);
+      
+    viewer.zoom(1.2);
+    viewer.render();
+    
+    // Listen for messages from parent window
+    setupMessageListener();
+});
+
+function toggleElements(show) {
+
+    // toggle models
+    if (show) {
+        // Show all toggleable models
+        toggleableModelIds.forEach(function(modelId) {
+            viewer.getModel(modelId).show();
+        });
+
+        // Show all shapes
+        toggleableShapes.forEach(function(shape, i) {
+            shape = toggleableShapes[i];
+            shape_opacity = toggleableShapes_opacity[i];
+            shape.updateStyle({opacity:shape_opacity});
+        });
+
+        // Show all labels
+        toggleableLabels.forEach(function(label) {
+            label.sprite.visible = true;
+        });
+
+    } else {
+        // Hide all toggleable models
+        toggleableModelIds.forEach(function(modelId) {
+            viewer.getModel(modelId).hide();
+        });
+
+        // Hide all shapes
+        toggleableShapes.forEach(function(shape) {
+            shape.updateStyle({opacity:0});
+        });
+
+        // Hide all labels
+        toggleableLabels.forEach(function(label) {
+            label.sprite.visible = false;
+        });
+    }
+
+    viewer.render();
+}
+
+function setupMessageListener() {
+    window.addEventListener('message', function(event) {
+        
+        if (event.data.type === 'toggleButton') {
+            toggleElements(event.data.show);
+        }
+    });
+}
+
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Enantioselective S-Oxidation with Aspartic acid-derived Peptides"
+title: "Enantioselective S-Oxidation with an Aspartic acid-derived Peptide"
 tags: [interactive, computational_chemistry, publication]
 ---
 
@@ -63,13 +63,15 @@ tags: [interactive, computational_chemistry, publication]
 
 > Click and drag to rotate, Ctrl+click/Mouse3 to move, scroll/right-click to zoom.
 
-This blog post contains interactive visualization for the computational section of our work on the enantioselective S-oxidation of sulfoxides by an aspartic-acid containing tetrapeptide[^OrgLett].
+This blog post contains interactive visualization for the computational section of our work on the enantioselective S-oxidation of sulfoxides by an aspartic-acid containing tetrapeptide.[^OrgLett]
 
 <div class="img1cm">
-  <img style='width: 70vw; max-width: 900px; object-fit: contain' src="/assets/enantioselective_s_oxidation/reaction.jpg"/>
+  <img style='max-width: 95vw; width: 1000px; object-fit: contain' src="/assets/enantioselective_s_oxidation/reaction.jpg"/>
 
   <div align="center"><i>The modeled reaction.</i></div>
 </div>
+
+### Major product TS (pro-<i>R</i>)
 
 <div class="iframe-parent">
   <iframe
@@ -78,10 +80,9 @@ This blog post contains interactive visualization for the computational section 
     frameBorder="0"
   ></iframe>
 </div>
+<div align="center"><i>Best transition state leading to the major enantiomer. Substrate highlighted in orange.</i></div>
 
-<div align="center"><i>Best transition state leading to the major enantiomer.</i></div>
-
-<br>
+### Minor product TS (pro-<i>S</i>)
 
 <div class="iframe-parent">
   <iframe
@@ -91,10 +92,10 @@ This blog post contains interactive visualization for the computational section 
   ></iframe>
 </div>
 
-<div align="center"><i>Best transition state leading to the minor enantiomer.</i></div>
+<div align="center"><i>Best transition state leading to the minor enantiomer. Substrate highlighted in orange.</i></div>
 
 <div class="img1cm">
-  <img style='width: 70vw; max-width: 900px; object-fit: contain' src="/assets/enantioselective_s_oxidation/figure.jpg"/>
+  <img style='max-width: 95vw; width: 1000px; object-fit: contain' src="/assets/enantioselective_s_oxidation/figure.jpg"/>
 
   <div align="center"><i>Two- and three-dimensional non-covalent binding network depictions. a: Major enantiomer best TS. b: Minor enantiomer best TS. c: Double β-hairpin motif within the catalyst. Energetic data at the ωB97M-V/def2-TZVPP/SMD(CHCl<sub>3</sub>)//R<sup>2</sup>SCAN-3c/CPCM(CHCl<sub>3</sub>) level.</i></div>
 </div>
