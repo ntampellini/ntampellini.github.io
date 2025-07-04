@@ -170,3 +170,33 @@ This blog post contains interactive visualization for our computational analysis
     frameBorder="0"
   ></iframe>
 </div>
+
+### P7 / S4 (96% ee)
+
+<div class="iframe-parent">
+  <iframe
+    class="iframe"
+    src="/assets/generality_oriented_optimization/p7s4.html"
+    frameBorder="0"
+  ></iframe>
+</div>
+
+### P7 / S10 (90% ee)
+
+<div class="iframe-parent">
+  <iframe
+    class="iframe"
+    src="/assets/generality_oriented_optimization/p7s10.html"
+    frameBorder="0"
+  ></iframe>
+</div>
+
+### P7 / S15 (26% ee)
+
+<div class="iframe-parent">
+  <iframe
+    class="iframe"
+    src="/assets/generality_oriented_optimization/p7s15.html"
+    frameBorder="0"
+  ></iframe>
+</div>
