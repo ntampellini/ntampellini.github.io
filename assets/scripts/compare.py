@@ -56,7 +56,7 @@ def compare(argv):
 
     # clean input files
     for filename in argv[1:]:
-        if not filename.endswith(".out"): 
+        if not (filename.endswith(".out") or filename.endswith(".xyz")): 
             argv.remove(filename)
 
     if len(argv) == 1:

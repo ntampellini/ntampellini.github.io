@@ -64,8 +64,9 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from rich.traceback import install
 
-from utils import (all_dists, d_min_bond, dihedral, graphize, norm_of,
-                   point_angle, pt, read_xyz, suppress_stdout_stderr)
+from utils import (all_dists, d_min_bond, dihedral, get_ts_d_estimate,
+                   graphize, multiplicity_check, norm_of, point_angle, pt,
+                   read_xyz, suppress_stdout_stderr)
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
@@ -343,26 +344,6 @@ def get_daily_cost(procs, mem_per_core):
     else:
         return max(procs, procs*mem_per_core/15) * 24 * hourly_rate
 
-def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
-    '''
-    Returns an estimate for the distance between two
-    specific atoms in a transition state, by multipling
-    the sum of covalent radii for a constant.
-    
-    '''
-    mol = read_xyz(filename)
-    i1, i2 = indices
-    a1, a2 = pt[mol.atomnos[i1]], pt[mol.atomnos[i2]]
-    cr1 = a1.covalent_radius
-    cr2 = a2.covalent_radius
-
-    est_d = round(factor * (cr1 + cr2), 2)
-
-    if verbose:
-        print(f'--> Estimated TS d({a1}-{a2}) = {est_d} Å')
-        
-    return est_d
-
 def get_potential_ts_bonds(coords, atomnos, graph):
     '''
     Returns a list of Choice objects representing pairs of
@@ -385,7 +366,7 @@ def get_potential_ts_bonds(coords, atomnos, graph):
                     # print(f'{a1}-{a2} is {ratio:.2f} bond lengths')
 
                     potential_ts_bonds.append(
-                        Choice(name=f"{pt[atomnos[i1]]}-{pt[atomnos[i2]]} bond, {dist:.3f} Å, {ratio:.2f}x sum of cov. radii", value=f"{i1} {i2} {dist:.2f}")
+                        Choice(name=f"{i1:3.0f} - {i2:3.0f}  |  {pt[atomnos[i1]]}-{pt[atomnos[i2]]} bond, {dist:.3f} Å, {ratio:.2f}x sum of cov. radii", value=f"{i1} {i2} {dist:.2f}")
                     )
 
     return potential_ts_bonds
@@ -400,7 +381,7 @@ def inquire_constraints(xyzname=None):
         mol = read_xyz(xyzname)
         graph = graphize(mol.atomcoords[0], mol.atomnos)
         suggested_constraints = get_potential_ts_bonds(mol.atomcoords[0], mol.atomnos, graph)
-        print(f"DEBUG ----> Found {len(suggested_constraints)} constraints")
+
         if suggested_constraints:
 
             while True:
@@ -642,28 +623,7 @@ def copy_from_parent_if_not_here(filename):
             print(f'--> Copied {filename} from parent folder to current folder.')
         else:
             raise Exception(f'Could not find {filename} file in current nor parent folder.')
-        
-def multiplicity_check(rootname, charge, multiplicity=1) -> bool:
-    '''
-    Returns True if the multiplicity and the nuber of
-    electrons are one odd and one even, and vice versa.
-
-    '''
-
-    electrons = 0
-    for line in getoutput(f'cat {rootname}.xyz').splitlines():
-        parts = line.split()
-        if len(parts) == 4:
-            try:
-                element = parts[0]
-                electrons += getattr(pt, element).number
-            except AttributeError:
-                pass
-
-    electrons -= charge
-    
-    return (multiplicity % 2) != (electrons % 2)
-        
+                
 ############################################################# START OF LOGIC
 
 # usage = (
@@ -894,9 +854,19 @@ if args.freqtemp:
     ans = inquirer.text(message="Specify the new temperature for the vibrational correction, in degrees Celsius:").execute()
     options["temp"] = round(float(ans) + 273.15, 2)
 
-# Make sure to add Freq for appropriate calculations if we have not already
-if options["freq"] and "Freq" not in options["additional_kw"]:
-    options["additional_kw"] += " Freq"
+if options["freq"]:
+
+    options["temp"] = inquirer.text(
+            message=f'Frequency calculation temperature? (in °C):',
+            default='25',
+            filter=float,
+                ).execute() + 273.15
+
+    options["temp"] = round(options["temp"], 2)
+
+    # Make sure to add Freq for appropriate calculations if we have not already
+    if "Freq" not in options["additional_kw"]:
+        options["additional_kw"] += " Freq"
 
 # Inquire about automatic charges based on file names
 allchars = ''.join(args.inputfiles)

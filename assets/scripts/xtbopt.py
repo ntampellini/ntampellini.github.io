@@ -4,7 +4,7 @@ options = {
     "opt" : True,
 
     "method" : [#"GFN-FF",
-                "GFN2-XTB",
+                "AIMNet2/wB97M-V",
                ],
     "solvent" : "chloroform",
     "charge" : 0,
@@ -22,7 +22,11 @@ from time import perf_counter
 import numpy as np
 from firecode.algebra import dihedral, norm_of, point_angle
 from firecode.calculators._xtb import xtb_gsolv, xtb_opt
-from firecode.utils import read_xyz, time_to_string, write_xyz, Constraint
+from firecode.utils import Constraint, read_xyz, time_to_string, write_xyz
+from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
+
+from utils import multiplicity_check, get_ts_d_estimate
 
 if len(sys.argv) == 1:
     print("\n  Optimizes the specified geometry/ies, compares results and replaces the input file. Syntax:\n\n" +
@@ -36,10 +40,41 @@ if len(sys.argv) == 1:
         )
     quit()
 
-if "ff" in sys.argv:
-    sys.argv.remove("ff")
-    options["method"] = ["GFN-FF"]
-    print("--> Using GFN-FF force field")
+allchars = ''.join(sys.argv[1:])
+auto_charges = False
+if '+' in allchars or '-' in allchars:
+    auto_charges = inquirer.confirm(
+        message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
+        default=True,
+    ).execute()
+
+if auto_charges:
+    options["charge"] = 'auto'
+
+options["method"] = [inquirer.select(
+        message="Which level of theory would you like to use?:",
+        choices=(
+            Choice(value='AIMNet2/wB97M-V', name='AIMNet2/wB97M-V'),
+            Choice(value='GFN2-xTB', name='GFN2-xTB (XTB)'),
+            Choice(value='GFN-FF', name='GFN-FF (XTB)'),
+            Choice(value='GFN2-xTB (TBLITE)', name='GFN2-xTB (TBLITE)'),
+        ),
+        default=options['method'],
+    ).execute()]
+
+calc = 'XTB'
+
+if 'AIMNet2/wB97M-V' in options["method"]:
+    from aimnet2_firecode.interface import aimnet2_opt, get_aimnet2_calc
+    print("--> using aimnet2 via ASE")
+    ase_calc = get_aimnet2_calc()
+    calc = 'AIMNET2'
+
+if 'GFN2-XTB (TBLITE)' in options["method"]:
+    from firecode.ase_manipulations import ase_tblite_opt, get_ase_calc
+    print("--> using tblite via ASE")
+    ase_calc = get_ase_calc(('TBLITE', 'GFN2-xTB', None, options['solvent']))
+    calc = 'TBLITE'
 
 constraints, distances = [], []
 newfile = False
@@ -52,17 +87,6 @@ if "solvent" in [kw.split('=')[0] for kw in sys.argv]:
     options["solvent"] = next(kw.split('=')[1] for kw in sys.argv if kw.split('=')[0] == 'solvent')
     print(f"--> Setting solvent to {options['solvent']}")
     sys.argv.remove(f"solvent={options['solvent']}")
-
-if "aim" in sys.argv:
-
-    from aimnet2_firecode.interface import aimnet2_opt, get_aimnet2_calc
-    
-    print("--> using aimnet2 via ASE")
-    calc = get_aimnet2_calc()
-    aimnet2 = True
-    options["method"] = ['AIMNet2/wB97M-V']
-    # options["solvent"] = None
-    sys.argv.remove("aim")
 
 if "flat" in sys.argv:
     sys.argv.remove("flat")
@@ -94,8 +118,8 @@ if "flat" in [kw.split("=")[0] for kw in sys.argv]:
     print(f"--> Flattening atom {flat_index}")
     sys.argv.remove(f"flat={flat_index}")
 
-    from firecode.utils import graphize
     from firecode.graph_manipulations import neighbors
+    from firecode.utils import graphize
 
     mol = read_xyz(sys.argv[1])
     graph = graphize(mol.atomcoords[0], mol.atomnos)
@@ -116,8 +140,11 @@ if "c" in sys.argv:
 
         data = input("Constrained indices [enter to stop]: ").split()
 
-        if data == []:
+        if not data:
             break
+
+        elif data[-1] == "ts":
+            data[-1] = str(get_ts_d_estimate(sys.argv[1], (int(i) for i in data[0:2])))
 
         # try:
 
@@ -219,6 +246,22 @@ for i, name in enumerate(names):
             os.remove(outname)
         write_type = 'a' if newfile else 'w'
 
+        # set charge
+        if auto_charges:
+            charge = name.count("+") - name.count("-")
+        else:
+            charge = options['charge']
+
+        # set multiplicity
+        if multiplicity_check(name[:-4], int(charge)):
+            mult = 1
+        else:
+            mult = inquirer.text(
+                message=f'It appears {name} is not a singlet. Please specify multiplicity:',
+                validate=lambda inp: inp.isdigit() and int(inp) > 1,
+                default="2",
+            ).execute()
+
         for c_n, coords in enumerate(data.atomcoords):
 
             constrained_indices, constrained_distances, constrained_dihedrals, constrained_dih_angles = [], [], [], []
@@ -269,10 +312,13 @@ for i, name in enumerate(names):
             
             action = "Optimizing" if options["opt"] else "Calculating SP energy on"
             for method in options["method"]:
-                print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method})')
+                print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method}) - CHG={charge} MULT={mult}')
                 t_start = perf_counter()
 
-                if aimnet2:
+                if calc == 'AIMNET2':
+
+                    if mult != 1:
+                        raise NotImplementedError('AIMNET2 only supports singlets.')
 
                     coords, energy, success = aimnet2_opt(
                                                             coords,
@@ -287,42 +333,67 @@ for i, name in enumerate(names):
                                                             constrained_dihedrals_indices=constrained_dihedrals,
                                                             constrained_dihedrals_values=constrained_dih_angles,
 
-                                                            ase_calc=calc,
+                                                            ase_calc=ase_calc,
                                                             traj=name[:-4] + "_traj",
                                                             logfunction=print,
-                                                            charge=options["charge"],
+                                                            charge=charge,
                                                             maxiter=500 if options["opt"] else 1,
+                                                            solvent=options["solvent"],
 
                                                             # title='XTBOPT_temp',
                                                             # debug=True,
                                                         )
                     
-                    if options["solvent"] is not None:
-                        gsolv = xtb_gsolv(
-                                            coords,
-                                            data.atomnos,
-                                            charge=options['charge'],
-                                            solvent=options['solvent'],
-                                        )
-                        print(f'--> {name}: ALPB GSolv = {gsolv:.2f} kcal/mol')
-                        energy += gsolv
-
-                else:
+                elif calc == "XTB":
                 
-                    assert constrained_angles_indices == [], "No planar angles for xtb_opt yet..."
-
-                    coords, energy, success = xtb_opt(coords,
+                    coords, energy, success = xtb_opt(
+                                                    coords,
                                                     data.atomnos,
                                                     constrained_indices=constrained_indices,
                                                     constrained_distances=constrained_distances,
+
                                                     constrained_dihedrals=constrained_dihedrals,
                                                     constrained_dih_angles=constrained_dih_angles,
+
+                                                    constrained_angles_indices=constrained_angles_indices,
+                                                    constrained_angles_values=constrained_angles_values,
+
                                                     constrain_string=options["constrain_string"],
                                                     method=method,
                                                     solvent=options["solvent"],
-                                                    charge=options["charge"],
+                                                    charge=charge,
+                                                    mult=mult,
                                                     opt=options["opt"],
                                                     )
+
+                elif calc == 'TBLITE':
+
+                    coords, energy, success = ase_tblite_opt(
+                                                    coords,
+                                                    data.atomnos,
+                                                    tb_calc=ase_calc,
+                                                    method=method,
+
+                                                    constrained_indices=constrained_indices,
+                                                    constrained_distances=constrained_distances,
+
+                                                    constrained_angles_indices=constrained_angles_indices,
+                                                    constrained_angles_values=constrained_angles_values,
+
+                                                    constrained_dihedrals_indices=constrained_dihedrals,
+                                                    constrained_dihedrals_values=constrained_dih_angles,
+
+                                                    charge=charge,
+                                                    mult=1,
+                                                    solvent=options["solvent"],
+                                                    
+                                                    maxiter=500 if options["opt"] else 1,
+                                                    traj=name[:-4] + "_traj",
+                                                    logfunction=print,
+
+                                                    # title='temp',
+                                                    # debug=False,
+                                                )
 
                 elapsed = perf_counter() - t_start
 

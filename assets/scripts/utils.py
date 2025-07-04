@@ -6,6 +6,7 @@ import numpy as np
 from cclib.io import ccread
 from networkx import from_numpy_matrix, set_node_attributes
 from periodictable import core, covalent_radius, mass
+from subprocess import getoutput
 
 for pt_n in range(5):
     try:
@@ -185,3 +186,44 @@ def graphize(coords, atomnos, mask=None):
     set_node_attributes(graph, dict(enumerate(atomnos)), 'atomnos')
 
     return graph
+
+def multiplicity_check(rootname, charge, multiplicity=1) -> bool:
+    '''
+    Returns True if the multiplicity and the nuber of
+    electrons are one odd and one even, and vice versa.
+
+    '''
+
+    electrons = 0
+    for line in getoutput(f'cat {rootname}.xyz').splitlines():
+        parts = line.split()
+        if len(parts) == 4:
+            try:
+                element = parts[0]
+                electrons += getattr(pt, element).number
+            except AttributeError:
+                pass
+
+    electrons -= charge
+    
+    return (multiplicity % 2) != (electrons % 2)
+
+def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
+    '''
+    Returns an estimate for the distance between two
+    specific atoms in a transition state, by multipling
+    the sum of covalent radii for a constant.
+    
+    '''
+    mol = read_xyz(filename)
+    i1, i2 = indices
+    a1, a2 = pt[mol.atomnos[i1]], pt[mol.atomnos[i2]]
+    cr1 = a1.covalent_radius
+    cr2 = a2.covalent_radius
+
+    est_d = round(factor * (cr1 + cr2), 2)
+
+    if verbose:
+        print(f'--> Estimated TS d({a1}-{a2}) = {est_d} Å')
+        
+    return est_d
