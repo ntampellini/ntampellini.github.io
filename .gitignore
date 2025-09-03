@@ -8,3 +8,5 @@ vendor
 obsidian.css
 .obsidian
 *.ipynb
+.conda/*
+__pycache__
