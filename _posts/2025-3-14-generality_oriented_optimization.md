@@ -200,3 +200,18 @@ This blog post contains interactive visualization for our computational analysis
     frameBorder="0"
   ></iframe>
 </div>
+
+### P7 / D2 (regioselectivity)
+
+<div>
+  <img style='width: 70vw; max-width: 500px; object-fit: contain' src="/assets/generality_oriented_optimization/p7d2.jpg"/>
+  <!-- <div align="center"><i><b>P5 to P7</b> - Description</i>.</div> -->
+</div>
+
+<div class="iframe-parent">
+  <iframe
+    class="iframe"
+    src="/assets/generality_oriented_optimization/p7d2.html"
+    frameBorder="0"
+  ></iframe>
+</div>
