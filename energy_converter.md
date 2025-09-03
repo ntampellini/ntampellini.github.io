@@ -13,7 +13,7 @@ title: Energy Converter
 
 //DEFINE METHODS
 function constants(conv) {
-    var numE = 7;
+    var numE = 8;
           conv[0] = 1.000 ;
 // eV
           conv[1] = 2.7211399E+01 ;
@@ -26,9 +26,11 @@ function constants(conv) {
 // V
           conv[5] = 2.6255002E+06/96484.6 ;
 // K
-          conv[6] =3.1577709E+05 ;
+          conv[6] = 3.1577709E+05 ;
 // Boltzmann
           conv[7] = -conv[6] ;
+// nm
+          conv[8] = 1.2408816E3 / conv[1] ;
             return numE;
 }
 
@@ -54,26 +56,30 @@ function displayInfo(form,field) {
          break;
       }
    }
-   // console.log("idx is", idx)
+   console.log("DEBUG: idx of changed box is", idx)
    if (idx >= 9) { displaySpringInfo(form,field) } else {
 
       // find number of characters in input string for significant figure functions
       nchars = form.elements[idx].value.length +1 ;
 
       // calculate the base energy in Hartrees
-      if ( idx != 7) {
-         energy = form.elements[idx].value/conv[idx];
-      } else {
+      if ( idx == 7) {
          energy = Math.log(form.elements[idx].value)*298.15/conv[idx];
+      } else if (idx == 8 ) {
+         energy = conv[idx]/form.elements[idx].value;
+      } else {
+         energy = form.elements[idx].value/conv[idx];
       }
 
       // convert to other units
       for (var i=0; i<=nfields; i++) {
          if ( i != idx ) {
-            if ( i != 7) {
-               form.elements[i].value = trunc(energy*conv[i],nchars) ;
-            } else {
+            if ( i == 7 ) {
                form.elements[i].value = trunc(Math.exp(energy*conv[i]/298.15),4) ;
+            } else if ( i == 8 ) {
+               form.elements[i].value = trunc(conv[i]/energy,4) ;
+            } else {
+               form.elements[i].value = trunc(energy*conv[i],nchars) ;
             }
          }
       }
@@ -160,7 +166,7 @@ function halflife() {
       factor = 1E-12;
    }
 
-   console.log(time/factor, uom)
+   // console.log(time/factor, uom)
    intlength = Math.floor(time/factor).toString().length
    if (intlength > 8) {
       nchars = 4;
@@ -230,7 +236,8 @@ or click outside of the input box.
 <INPUT TYPE="text" NAME="cm-1" VALUE="0" onChange="displayInfo(this.form,this.name);"> cm<sup>-1</sup><BR>
 <INPUT TYPE="text" NAME="V" VALUE="0" onChange="displayInfo(this.form,this.name);"> V for 1e<sup>-</sup> transfer<BR>
 <INPUT TYPE="text" NAME="K" VALUE="0" onChange="displayInfo(this.form,this.name);"> K (equivalent temperature)<BR>
-<INPUT TYPE="text" NAME="B" VALUE="1" onChange="displayInfo(this.form,this.name);"> Boltzmann population ratio at 25 °C
+<INPUT TYPE="text" NAME="B" VALUE="1" onChange="displayInfo(this.form,this.name);"> Boltzmann population ratio at 25 °C<BR>
+<INPUT TYPE="text" NAME="lambda" VALUE="0" onChange="displayInfo(this.form,this.name);"> λ (nm)<BR>
 </FORM>
 <HR>
 <H3>Boltzmann Populations and kinetics</H3>
