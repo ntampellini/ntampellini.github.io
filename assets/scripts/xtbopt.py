@@ -15,13 +15,15 @@ options = {
 }
 ####################################################
 
+EH_TO_KCAL = 627.509608030593
+
 import os
 import sys
 from time import perf_counter
 
 import numpy as np
 from firecode.algebra import dihedral, norm_of, point_angle
-from firecode.calculators._xtb import xtb_gsolv, xtb_opt
+from firecode.calculators._xtb import xtb_opt
 from firecode.utils import Constraint, read_xyz, time_to_string, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
@@ -42,14 +44,16 @@ if len(sys.argv) == 1:
 
 allchars = ''.join(sys.argv[1:])
 auto_charges = False
+auto_mult = False
 if '+' in allchars or '-' in allchars:
     auto_charges = inquirer.confirm(
-        message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
+        message="Found charge signs in filenames (+/-). Auto assign charges/multiplicity in input files?",
         default=True,
     ).execute()
 
 if auto_charges:
     options["charge"] = 'auto'
+    auto_mult = True
 
 options["method"] = [inquirer.select(
         message="Which level of theory would you like to use?:",
@@ -58,6 +62,7 @@ options["method"] = [inquirer.select(
             Choice(value='GFN2-xTB', name='GFN2-xTB (XTB)'),
             Choice(value='GFN-FF', name='GFN-FF (XTB)'),
             Choice(value='GFN2-xTB (TBLITE)', name='GFN2-xTB (TBLITE)'),
+            Choice(value='UMA/OMol25', name='UMA/OMol25'),
         ),
         default=options['method'],
     ).execute()]
@@ -69,6 +74,13 @@ if 'AIMNet2/wB97M-V' in options["method"]:
     print("--> using aimnet2 via ASE")
     ase_calc = get_aimnet2_calc()
     calc = 'AIMNET2'
+
+if 'UMA/OMol25' in options['method']:
+    print("--> Loading UMA model from disk...")
+
+    from firecode.calculators._ase_uma import uma_opt, get_uma_calc
+    ase_calc = get_uma_calc(logfunction=print)
+    calc = 'UMA'
 
 if 'GFN2-XTB (TBLITE)' in options["method"]:
     from firecode.ase_manipulations import ase_tblite_opt, get_ase_calc
@@ -128,10 +140,39 @@ if "flat" in [kw.split("=")[0] for kw in sys.argv]:
     assert len(nb) == 3, f'--> index {flat_index} has {len(nb)} neighbors - can only flatten trigonal pyramidal atoms.'
     
     a, b, c = nb
-    constraints.append([a, flat_index, b, c, 180])
-    constraints.append([b, flat_index, c, a, 180])
-    constraints.append([c, flat_index, b, a, 180])
+    constraints.append(Constraint((a, flat_index, b, c), value=180))
+    constraints.append(Constraint((b, flat_index, c, a), value=180))
+    constraints.append(Constraint((c, flat_index, b, a), value=180))
+
+if "amides" in [kw.split("=")[0] for kw in sys.argv]:
+    sys.argv.remove(f"amides")
+    print(f"--> Rotating secondary amides into E conformation")
     
+    from firecode.utils import match_smarts_pattern
+    mol = read_xyz(sys.argv[1])
+    matches = match_smarts_pattern((mol.atomcoords[0], mol.atomnos), "C(=O)N([H])")
+
+    print(f"--> Found {len(matches)} amides\n")
+
+    for amide in matches:
+        c, o, n, h = amide
+        constraints.append(Constraint((o, c, n, h), value=180))
+    
+if "bturns" in [kw.split("=")[0] for kw in sys.argv]:
+    sys.argv.remove(f"bturns")
+    print(f"--> Enforcing β-turns ")
+    
+    from firecode.utils import match_smarts_pattern
+    mol = read_xyz(sys.argv[1])
+    matches = match_smarts_pattern((mol.atomcoords[0], mol.atomnos), "CC(C(N(C)C(C)C(N[H])=O)=O)NC([#6])=O")
+
+    print(f"--> Found {len(matches)} β-turns\n")
+
+    for turn in matches:
+        constraints.append(Constraint((turn[13], turn[12], turn[1], turn[2]), value=60))
+        constraints.append(Constraint((turn[12], turn[1], turn[2], turn[3]), value=-120))
+        constraints.append(Constraint((turn[3], turn[5], turn[7], turn[8]), value=30))
+
 if "c" in sys.argv:
     
     sys.argv.remove("c")
@@ -255,11 +296,14 @@ for i, name in enumerate(names):
         # set multiplicity
         if multiplicity_check(name[:-4], int(charge)):
             mult = 1
+        elif auto_mult:
+            mult = 2
         else:
             mult = inquirer.text(
                 message=f'It appears {name} is not a singlet. Please specify multiplicity:',
                 validate=lambda inp: inp.isdigit() and int(inp) > 1,
                 default="2",
+                filter=int,
             ).execute()
 
         for c_n, coords in enumerate(data.atomcoords):
@@ -312,7 +356,13 @@ for i, name in enumerate(names):
             
             action = "Optimizing" if options["opt"] else "Calculating SP energy on"
             for method in options["method"]:
-                print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method}) - CHG={charge} MULT={mult}')
+
+                if calc in ('AIMNET2', 'UMA') and options["solvent"] != 'None':
+                    post = f'+ALPB({options["solvent"]})'
+                else:
+                    post = ''
+
+                print(f'{action} {name} - {i+1} of {len(names)}, conf {c_n+1} of {len(data.atomcoords)} ({method}{post}) - CHG={charge} MULT={mult}')
                 t_start = perf_counter()
 
                 if calc == 'AIMNET2':
@@ -395,6 +445,32 @@ for i, name in enumerate(names):
                                                     # debug=False,
                                                 )
 
+                elif calc == 'UMA':
+                    coords, energy, success = uma_opt(
+                                                            coords,
+                                                            data.atomnos,
+
+                                                            constrained_indices=constrained_indices,
+                                                            constrained_distances=constrained_distances,
+
+                                                            constrained_angles_indices=constrained_angles_indices,
+                                                            constrained_angles_values=constrained_angles_values,
+
+                                                            constrained_dihedrals_indices=constrained_dihedrals,
+                                                            constrained_dihedrals_values=constrained_dih_angles,
+
+                                                            ase_calc=ase_calc,
+                                                            mult=mult,
+                                                            traj=name[:-4] + "_traj",
+                                                            logfunction=print,
+                                                            charge=charge,
+                                                            maxiter=500 if options["opt"] else 1,
+                                                            solvent=options["solvent"],
+
+                                                            # title='XTBOPT_temp',
+                                                            # debug=True,
+                                                        )
+
                 elapsed = perf_counter() - t_start
 
                 if energy is None:
@@ -453,7 +529,17 @@ if None not in energies:
     else:
         min_e = 0
 
+    ### NICER TABLE PRINTOUT
+
+    from prettytable import PrettyTable
+
+    table = PrettyTable()
+    table.field_names = ['#', 'Filename', 'Electronic Energy (Eh)', 'Rel. E (kcal/mol)']
+
     print()
     longest_name = max([len(s) for s in names_confs])
-    for nc, energy in zip(names_confs, energies):
-        print(f"ENERGY -> {nc:{longest_name}s} = {energy-min_e:.2f} kcal/mol")
+
+    for i, (nc, energy) in enumerate(zip(names_confs, energies)):
+        table.add_row([i+1, nc, energy/EH_TO_KCAL, energy-min_e])
+        
+    print(table.get_string())

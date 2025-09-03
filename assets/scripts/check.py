@@ -11,6 +11,7 @@ from numpy.linalg import norm
 
 from utils import dihedral, write_xyz
 
+EH_TO_KCAL = 627.5096080305927
 
 def main(loop=False):
 
@@ -91,7 +92,26 @@ def main(loop=False):
         sys.argv = sys.argv[:2]
 
     _, rootname = sys.argv
-    rootname = rootname.split(".")[0]
+
+    if rootname.endswith(".xyz"):
+
+        energies = [float(line.split()[-1]) for line in getoutput(f'grep \'E.*-\d*.\' {rootname}').split('\n')]
+        energies_kcal = np.array(energies) * EH_TO_KCAL
+        energies_kcal -= min(energies_kcal)
+
+        plt.cld()
+        plt.plot(energies_kcal, color=37)
+        plt.scatter(energies_kcal, color='red+')
+        plt.xlabel("Structure #")
+        plt.ylabel("Rel. Energy (kcal/mol)")
+        plt.show()
+
+        print(f'Min: Structure {energies.index(min(energies))}/{len(energies)} ({min(energies):.8f} Eh)')
+        print(f'Max: Structure {energies.index(max(energies))}/{len(energies)} ({min(energies):.8f} Eh)')
+
+        return
+    else:
+        rootname = rootname.split(".")[0]
 
     # catch use of PID to check a job
     if rootname.isdigit():
@@ -210,7 +230,7 @@ def main(loop=False):
                 last_E = energies[-1]
                 energies = np.array(energies)
                 energies -= np.min(energies) if not neb else 0
-                energies *= 627.5096080305927
+                energies *= EH_TO_KCAL
                 x = np.arange(1,len(energies)+1)
                 
                 if zoom:
@@ -334,7 +354,7 @@ def main(loop=False):
 
             energies = np.array(energies)
             energies -= np.min(energies)
-            energies *= 627.5096080305927
+            energies *= EH_TO_KCAL
 
             plt.cld()
             plt.plot(distances, energies)

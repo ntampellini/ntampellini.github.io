@@ -3,7 +3,7 @@ hourly_rate = 0.004 # $/(h*core)
 
 options = {
     "solvent" : "chloroform",
-    "solvent_model" : 'CPCM', # CPCM, SMD, ALPB
+    "solvent_model" : 'CPCM', # CPCM, SMD, ALPB, None
     "level" : "R2SCAN-3c",
     "basis_set" : "",
     "opt": "",
@@ -176,7 +176,7 @@ end
 
 def get_solvent_block(solvent, solvent_model):
 
-    if solvent_model == 'ALPB':
+    if solvent_model in ('ALPB', None):
         return ""
 
     s = '%cpcm\n'
@@ -204,7 +204,7 @@ def get_inp(rootname, opt=True):
         'ALPB' : f"ALPB({options['solvent']})",
         'CPCM' : 'CPCM',
         'SMD' : "",
-    }[options['solvent_model']]
+    }.get(options['solvent_model'], "") 
 
     inp = f'''! {options["level"]} {options["basis_set"]} {solvent_keyword} {options["opt"]}
 ! {options["additional_kw"]}
@@ -273,10 +273,10 @@ def get_scan_block(filename):
             sign = np.sign(ts_d_estimate - start_value)
             target_value = round(ts_d_estimate + 0.2 * sign, 2)
 
-            elem_id_string = f'{e1}{i1}-{e2}{i2}'
-
         else:
-            target_value = round(float(c_string.split()[-1]))
+            target_value = round(float(c_string.split()[-1]), 2)
+
+        elem_id_string = f'{e1}{i1}-{e2}{i2}'
 
     if c_type == "A":
         i1, i2, i3 = indices
@@ -485,20 +485,22 @@ def inquire_ts_mode_following(default=""):
         4 : "D",
     }
 
-    choices = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
+    if options["constr_block"] == "":
 
-    if choices:
+        choices = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
 
-        if inquirer.confirm(message=("Would you like the saddle opt. to follow the constrained "
-                            f"coordinates from the previous popt?"), default=True).execute():
+        if choices:
 
-            popt_ids = inquirer.select(
-                message="Select the constraint to follow:",
-                choices=choices).execute()
-            
-            letter = letter_dict[len(popt_ids.split())]
-            options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
-            return
+            if inquirer.confirm(message=("Would you like the saddle opt. to follow the constrained "
+                                f"coordinates from the previous popt?"), default=True).execute():
+
+                popt_ids = inquirer.select(
+                    message="Select the constraint to follow:",
+                    choices=choices).execute()
+                
+                letter = letter_dict[len(popt_ids.split())]
+                options["extra_block"] += "%geom\n  TS_Mode {{{0} {1}}}\n  end\nend".format(letter, popt_ids)
+                return
     
     ask_manual = False
     if args.compound and global_constraints:
@@ -825,7 +827,22 @@ if args.compound:
         options["freq"] = True
 
 if args.irc:
-    options["freq"] = True
+
+    use_old_hessian = inquirer.select(
+        message='Use previous hessian or recompute?',
+        choices=(
+            Choice(value=True, name='Use old Hessian (assumes same-name \"filename.hess\")'),
+            Choice(value=False, name='Recompute'),
+        ),
+        default=True,
+    ).execute()
+
+    if use_old_hessian:
+        options["extra_block"] += f"%geom\n  InHess  Read\n  InHessName  \"$ROOTNAME.hess\"\nend"
+
+    else:
+        options["freq"] = True
+
     options["additional_kw"] += " IRC Defgrid3"
     options["opt"] = ""
 
@@ -974,6 +991,4 @@ if run_jobs:
     inpnames = [name.split(".")[0]+".inp" for name in args.inputfiles]
 
     from orcasub_batch import main
-
-    # adding dummy first element to simulate sys.argv
-    main([None]+inpnames)
+    main(inpnames, priority=args.priority)
