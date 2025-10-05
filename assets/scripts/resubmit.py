@@ -39,4 +39,4 @@ else:
     if answer == "y":
 
         from orcasub_batch import main
-        main([None, *incomplete])
+        main(incomplete)

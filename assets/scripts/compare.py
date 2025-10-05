@@ -6,6 +6,7 @@ import numpy as np
 from firecode.pruning import get_moi_deviation_vec
 from firecode.pt import pt
 from firecode.rmsd import rmsd_and_max_numba
+from firecode.units import EH_TO_KCAL
 from firecode.utils import (graphize, read_xyz, suppress_stdout_stderr,
                             write_xyz)
 from InquirerPy import inquirer
@@ -15,8 +16,18 @@ from rich.traceback import install
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
+class tcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[38;2;65;165;165m'
+    WARNING = '\033[93m'
+    FAIL = '\033[38;2;232;111;136m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 scratchdir = '/vast/palmer/scratch/miller/nt383'
-EH_TO_KCAL = 627.509608030593
 
 class Options:
     def __init__(self):
@@ -122,6 +133,7 @@ def compare(argv):
                 break
 
     ### If checking scratch, append the running job full names to argv
+    running_names = []
     if options.scratch:
        
         cwd = operating_system.getcwd()
@@ -137,6 +149,7 @@ def compare(argv):
                     jobname = jobdir.split('-')[1].strip(pid).strip('_')
                     fullname = scratchdir+"/"+jobdir+'/'+jobname+'.out'
                     argv.append(fullname)
+                    running_names.append(fullname)
 
                     with suppress_stdout_stderr():
                         # copy traj from scratch
@@ -327,9 +340,13 @@ def compare(argv):
     min_e = min([job.get_comparison_energy() for job in jobs])
 
     for job in jobs:
-        converged = True if getoutput(f'grep HURRAY {job.name}') != '' else False
+        converged = getoutput(f'grep HURRAY {job.name}') != ''
         iterations = "conv" if converged else getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {job.name} -c')
         running = ', Running' if scratchdir in job.name else ''
+
+        # save job.completed attribute
+        look_for = "ORCA TERMINATED NORMALLY"
+        job.completed = getoutput(f'grep \'{look_for}\' {job.name}') != ''
 
         if options.stereochem:
             try:
@@ -379,6 +396,9 @@ def compare(argv):
         
     letter = 'G' if options.g else 'EE'
     table.add_column(f'Rel. {letter} (kcal/mol)', [round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 2) for job in jobs])
+    table.add_column('Status', [tcolors.OKGREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC if job.completed
+                           else (tcolors.WARNING + "RUNNING" + tcolors.ENDC if job.name in running_names
+                            else tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC) for job in jobs])
 
     if options.stereochem:
         table.add_column('Abs. Config.', [job.config for job in jobs])

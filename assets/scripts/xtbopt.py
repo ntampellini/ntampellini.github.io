@@ -3,9 +3,7 @@ options = {
     "csearch": False,
     "opt" : True,
 
-    "method" : [#"GFN-FF",
-                "AIMNet2/wB97M-V",
-               ],
+    "method" : "AIMNet2/wB97M-V", 
     "solvent" : "chloroform",
     "charge" : 0,
 
@@ -291,7 +289,7 @@ for i, name in enumerate(names):
         if auto_charges:
             charge = name.count("+") - name.count("-")
         else:
-            charge = options['charge']
+            charge = int(options['charge'])
 
         # set multiplicity
         if multiplicity_check(name[:-4], int(charge)):
@@ -540,6 +538,6 @@ if None not in energies:
     longest_name = max([len(s) for s in names_confs])
 
     for i, (nc, energy) in enumerate(zip(names_confs, energies)):
-        table.add_row([i+1, nc, energy/EH_TO_KCAL, energy-min_e])
+        table.add_row([i+1, nc, energy/EH_TO_KCAL, round(energy-min_e, 2)])
         
     print(table.get_string())
