@@ -266,7 +266,7 @@ Here you can find interactive visualizations for our computational analysis on t
 The Lin and Miller groups also reported the use of an oxo-analog of <b>P7</b> (<b>OAzcP7</b>) to enable the regiocontrolled oxidation of unsymmetrical diols[^regio]. In this reaction, the highly preorganized peptidyl template enabled the selective oxidation of the more hindered alcohol group over the more accessible one, overriding intrinsic steric biases. Ground state modeling of this system demonstrated its operation through conceptually analogous preferential formation of one catalyst-substrate adduct over its regioisomer.
 
 <div>
-  <img style='width: 70vw; max-width: 500px; object-fit: contain' src="/assets/generality_oriented_optimization/p7d2.jpg"/>
+  <img class="chemdraw" src="/assets/generality_oriented_optimization/p7d2.jpg"/>
   <!-- <div align="center"><i>The same optimized catalyst <b>P7</b> can also successfuly tackle the regioselective oxidation of <b>D2</b></i></div> -->
 </div>
 
@@ -278,11 +278,11 @@ The Lin and Miller groups also reported the use of an oxo-analog of <b>P7</b> (<
   ></iframe>
 </div>
 
-<script src="/assets/generality_oriented_optimization/tabs.js"></script>
+<script src="/assets/tabs.js"></script>
 
 ---
 {: data-content="footnotes"}
 
-[^ref]: <i> Paper in press...</i>
+[^ref]: Read the full paper on [ACS Catalysis](https://pubs.acs.org/doi/10.1021/acscatal.5c05893)
 [^ACS_guidelines]: See [ACS guidelines for scholarly posting & sharing policies](https://pubs.acs.org/page/copyright/journals/posting_policies.html)
 [^regio]: Catalyst-Controlled Regiodivergent Oxidation of Unsymmetrical Diols, read at [JACS](https://pubs.acs.org/doi/10.1021/jacs.5c00330)
