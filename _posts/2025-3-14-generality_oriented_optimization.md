@@ -106,6 +106,59 @@ tags: [interactive, computational_chemistry, publication]
   /* transform-origin: bottom; */
 }
 
+/* Claude mobile-friendly CSS layout only on mobile */
+
+/* Add smooth horizontal scrolling on mobile */
+.tab-buttons {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; /* smooth scrolling on iOS */
+  scrollbar-width: thin; /* Firefox */
+  gap: 2px; /* small space between buttons */
+}
+
+/* Hide scrollbar on Chrome/Safari but keep functionality */
+.tab-buttons::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tab-buttons::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-buttons::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+}
+
+.tab-button {
+  background-color: var(--main-back-color);
+  border: none;
+  border-radius: 5px;
+  border-bottom-left-radius: 0px;
+  border-bottom-right-radius: 0px;
+  padding: 10px 20px;
+  cursor: pointer;
+  height: 40px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Placing this AFTER .tab-button to ensure it takes precedence */
+.tab-button.active-tab-button {
+  background-color: var(--quote-background);
+  font-weight: bold;
+}
+
+/* reduce padding on very small screens */
+@media (max-width: 480px) {
+  .tab-button {
+    padding: 10px 12px;
+    font-size: 0.9em;
+  }
+}
+
 </style>
 
 <!-- CONTENT -->
