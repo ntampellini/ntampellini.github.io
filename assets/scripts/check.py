@@ -13,6 +13,29 @@ from utils import dihedral, write_xyz
 
 EH_TO_KCAL = 627.5096080305927
 
+def print_ts_mode_characterization(rootname):
+    # if one is a TS mode, characterize it
+    mode_block = getoutput('grep -E "^\s*[0-9]+\.\s+B\([A-Z]\s*[0-9]+,[A-Z]\s*[0-9]+\)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?' +
+        f'[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s*$" {rootname}.out')
+    
+    if mode_block != '':
+        mode_lines = [line for line in mode_block.split("\n")]
+        mode_descs = []
+        num = 1E4
+        for mode_line in reversed(mode_lines):
+            latest_num = int(mode_line.split()[0].replace(".", ""))
+            if latest_num >= num:
+                break
+            mode_descs.append(' '.join(mode_line.split()[1:4]))
+            num = latest_num
+
+        print('--> TS mode characterization')
+        for mode_desc in mode_descs:
+            # only pick the last value for that mode
+            value = float(next(line.split()[8] for line in reversed(mode_lines) if mode_desc.replace(" ", "") in line.replace(" ", "")))
+            print(f"  {mode_desc}    {value*100:.0f} %")
+        print("\n")
+
 def main(loop=False):
 
     plt.theme("pro")
@@ -141,22 +164,22 @@ def main(loop=False):
                     frags = f.readline().upper().split()
 
                     if frags[0] == "B":
-                        scantype = "distance"
+                        # scantype = "distance"
                         scan_indices = tuple([int(i) for i in frags[1:3]])
 
                     elif frags[0] == "A":
-                        scantype = "angle"
+                        # scantype = "angle"
                         scan_indices = tuple([int(i) for i in frags[1:4]])
 
                     elif frags[0] == "D":
-                        scantype = "dihedral"
+                        # scantype = "dihedral"
                         scan_indices = tuple([int(i) for i in frags[1:5]])
 
                     else:
                         scan = False
 
-                if "NEB" in line.upper():
-                    neb = True
+                # if "NEB" in line.upper():
+                #     neb = True
 
                 if ".CMP" in line.upper():
                     compound = True
@@ -197,7 +220,7 @@ def main(loop=False):
     for propname in propnames:
         if propname in files:
             
-            if not neb:
+            # if not neb:
                 # with open(propname, 'r') as f:
                 #     energies = []
                 #     while True:
@@ -207,12 +230,12 @@ def main(loop=False):
 
                 #         if not line:
                 #             break
-                try:
-                    energies = [float(line.split()[3]) for line in getoutput(f'grep \'&FINALEN\' {propname}').split('\n')]
-                except IndexError:
-                    energies = []
+            try:
+                energies = [float(line.split()[3]) for line in getoutput(f'grep -i \'&finalEnergy\' {propname}').split('\n')]
+            except IndexError:
+                energies = []
 
-            else:
+            # else:
                 # energies = []
                 # lines = getoutput(f"grep \"Starting iterations:\" {rootname}.out -A 500 ").splitlines()
                 # # energies = [float(line.split()[3]) for line in lines[4:]]
@@ -224,7 +247,8 @@ def main(loop=False):
                 #     except (IndexError, ValueError, AssertionError):
                 #         continue
 
-                raise NotImplementedError()
+                # raise NotImplementedError()
+                # energies = []
         
             if len(energies) > 0:
                 last_E = energies[-1]
@@ -296,20 +320,7 @@ def main(loop=False):
                                 break
                         print('\n')
 
-                        # if one is a TS mode, characterize it
-                        mode_block = getoutput('grep -E "^\s*[0-9]+\.\s+B\([A-Z]\s*[0-9]+,[A-Z]\s*[0-9]+\)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?' +
-                            f'[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s*$" {rootname}.out')
-                        
-                        if mode_block != '':
-                            mode_lines = [line for line in mode_block.split("\n")]
-                            mode_descs = {' '.join(line.split()[1:4]) for line in mode_lines}
-                            print('--> TS mode characterization')
-                            for mode_desc in mode_descs:
-                                # only pick the last value for that mode 
-                                value = [line.split()[7] for line in mode_lines if mode_desc in line][-1]
-                                print(f"  {mode_desc}    {value}")
-                            print("\n")
-
+                        print_ts_mode_characterization(rootname)
 
                     except IndexError:
                         pass

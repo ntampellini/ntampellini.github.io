@@ -11,10 +11,14 @@ from firecode.utils import (graphize, read_xyz, suppress_stdout_stderr,
                             write_xyz)
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
-from InquirerPy.validator import PathValidator
+from InquirerPy.validator import PathValidator, NumberValidator
 from rich.traceback import install
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
+
+scratchdir = '/vast/palmer/scratch/miller/nt383'
+
+####################################################################################
 
 class tcolors:
     HEADER = '\033[95m'
@@ -27,20 +31,54 @@ class tcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-scratchdir = '/vast/palmer/scratch/miller/nt383'
+K_BOLTZMANN = 1.380649E-23 # J/K
+H_PLANCK = 6.62607015E-34 # J*s
+R = 0.001985877534 # kcal/(mol*K)
+
+def get_eyring_k(activation_energy, T=298.15):
+    '''
+    Returns a rate constant in s^-1 given an
+    activation energy in kcal/mol and a temperature.
+    
+    '''
+    return K_BOLTZMANN * T / H_PLANCK * np.exp(-activation_energy/(R*T))
 
 class Options:
     def __init__(self):
         return
 
 class Job:
-    def __init__(self, filename, free_energy=False):
+    def __init__(self, filename, energy_mode='EE'):
         self.name = filename
 
-        if free_energy:
-            self.compare_via = 'free_energy'
-        else:
+        assert energy_mode in ('EE', 'H', 'G')
+
+        if energy_mode == 'EE':
             self.compare_via = 'electronic_energy'
+        elif energy_mode == 'H':
+            self.compare_via = 'enthalpy'
+        else:
+            self.compare_via = 'free_energy'
+
+    @property
+    def temperature(self):
+        if self.name.endswith(".out"):
+            return float(getoutput(f"grep \"Temperature\" {self.name}").split()[2])
+        return NotImplementedError
+
+    @property
+    def natoms(self):
+        try:
+            return int(getoutput(f"head {self.name[:-4]}.xyz -n 1").split()[0])
+        except:
+            return None
+        
+    @property
+    def charge(self):
+        try:
+            return int(getoutput(f"grep xyzfile {self.name[:-4]}.inp").split()[2])
+        except:
+            return None
 
     def __gt__(self, other):
         return getattr(self, self.compare_via) > getattr(other, other.compare_via)
@@ -60,6 +98,64 @@ class Job:
 
         elif self.name.endswith(".xyz"):
             raise NotImplementedError
+        
+    def get_freq_str(self):
+        n_atoms = int(getoutput(f'head {self.name[:-4]}.xyz -n 1'))
+        n_freqs = 3 * n_atoms
+        is_ts = getoutput(f'grep -i \"\!.*optts\" {self.name[:-4]}.out') != ""
+
+        lines = getoutput(f'grep \" \+[0-9]\+: \+-*[0-9]\+\.[0-9]\+ cm\*\*-1\" {self.freqfile}').split('\n')
+        freqs = [float(line.split()[1]) for line in lines]
+
+        if len(freqs) < n_freqs:
+            color = tcolors.FAIL
+            return f"{color}(no freqs found){tcolors.ENDC}"
+        
+        # if more than one set, only keep the last
+        n_sets = int(len(freqs)/n_freqs)
+        freqs = freqs[-n_freqs:]
+
+        neg_freqs = len([f for f in freqs if f < 0])
+        
+        if is_ts:
+            color = tcolors.OKGREEN if neg_freqs == 1 else tcolors.WARNING
+        else:
+            color = tcolors.OKGREEN if neg_freqs == 0 else tcolors.WARNING
+
+        comment = 'GS' if neg_freqs == 0 else ('TS' if neg_freqs == 1 else '')
+        s = "s" if n_sets > 1 else ""
+
+        return f"{color}{str(neg_freqs)} ({comment}), {n_sets} set{s}{tcolors.ENDC}"
+
+def assert_homogeneous_temps(jobs) -> float:
+    """Ensure Thermochemistry was carried out at the same temperature for each job.
+    
+    Returns temperature in Kelvin."""
+
+    temps = set([job.temperature for job in jobs])
+
+    if len(temps) > 1:
+        raise Exception(f'Not all jobs have the same temperature! {temps}')
+    
+    return temps.pop()
+
+def assess_consistent_natoms_charge(jobs) -> float:
+    """Checks whether jobs have the same number of atoms and charge."""
+
+    natoms = set([job.natoms for job in jobs])
+
+    if len(natoms) > 1:
+        print(f'Not all jobs have the same number of atoms - {natoms} - not computing populations.')
+        return False
+    
+    charges = set([job.charge for job in jobs])
+
+    if len(charges) > 1:
+        print(f'Not all jobs have the same charge - {charges} - not computing populations.')
+        return False
+
+    return True
+
 
 def compare(argv):
     '''
@@ -93,11 +189,12 @@ def compare(argv):
     avail_gcorrs.append(Choice(value=None,    name=f'?     Other folder  - choose another folder to read G(corr) values.'))
 
     choices = [
-        Choice(value="g",name='G          - Use free energy as a comparison metric.', enabled=len(avail_gcorrs)>1),
-        Choice(value="x",          name='extract    - extract structures to one or more new files.', enabled=False),
-        Choice(value="stereochem", name='stereochem - calculate/show stereochemistry around a set of atoms.', enabled=False),
-        Choice(value="novel",      name='novel      - only consider structures that are dissimilar to some others.', enabled=False),
-        Choice(value="scratch",    name='scratch    - scrape data from currently running jobs that were started in this folder.', enabled=False),
+        Choice(value="g",           name='G           - Use free energy as a comparison metric.', enabled=len(avail_gcorrs)>1),
+        Choice(value="h",           name='H           - Use enthalpy as a comparison metric.', enabled=False),
+        Choice(value="x",           name='extract     - extract structures to one or more new files.', enabled=False),
+        Choice(value="stereochem",  name='stereochem  - calculate/show stereochemistry around a set of atoms.', enabled=False),
+        Choice(value="novel",       name='novel       - only consider structures that are dissimilar to some others.', enabled=False),
+        Choice(value="scratch",     name='scratch     - scrape data from currently running jobs that were started in this folder.', enabled=False),
     ]
 
     options_to_set = inquirer.checkbox(
@@ -170,34 +267,30 @@ def compare(argv):
     # else:
     #     freqdir = '..'
 
+    energy_mode = "EE"
+
     ### If we are interested in free energy, set appropriate lookup folder
-    if options.g:
+    if options.g or options.h:
+
+        energy_mode = "G" if options.g else "H"
+
+        print_all_energies = inquirer.confirm(
+            message=f"Print EE and {energy_mode}(corr)?",
+            default=False,
+        ).execute()
 
         freqdir = inquirer.select(
-            message="Which folder would you like to extract G(corr) values from?",
+            message=f"Which folder would you like to extract {energy_mode}(corr) values from?",
             choices=avail_gcorrs,
             default=avail_gcorrs[0].value,
         ).execute()
 
         if freqdir is None:
             freqdir = inquirer.filepath(
-                message="Pick a folder to extract G(corr) values from:",
+                message=f"Pick a folder to extract {energy_mode}(corr) values from:",
                 only_directories=True,
                 validate=PathValidator(is_dir=True),
         ).execute()
-
-        # folderstring = 'parent folder(s)' if freqdir == '..' else freqdir
-        # print(f'--> Extracting G(corr) values from {folderstring}')
-
-    ### Set the energy threshold for file extraction
-
-    # if "thr" in [kw.split("=")[0] for kw in argv]:
-    #     energy_thr = next((kw.split("=")[-1] for kw in argv if "thr=" in kw))
-    #     print(f'-> set thr to {energy_thr} kcal/mol')
-    #     try:
-    #         argv.remove(f"thr={energy_thr}")
-    #     except ValueError:
-    #         raise ValueError(f'Trying to delete non-existent\"thr={energy_thr}\"')
 
     if options.x:
         energy_thr = inquirer.text(
@@ -206,18 +299,6 @@ def compare(argv):
             validate=lambda x: x.replace(".", "").isdigit(),
             filter=lambda x: float(x),
         ).execute()
-
-    # Specify where to extract files - if a filename is provided, structures
-    # will be extracted to a single file, otherwise the same filenames of
-    # initial structures will be used
-
-    # if "x" in [kw.split("=")[0] for kw in argv]:
-    #     outname = next((kw.split("=")[-1] for kw in argv if "=" in kw))
-    #     try:
-    #         argv.remove(f"x={outname}")
-    #     except ValueError:
-    #         raise ValueError(f'Trying to delete non-existent\"x={outname}\"')
-    #     extract_to_files = True
 
         outfolder = inquirer.filepath(
             message="Where do you want to extract structures?",
@@ -259,7 +340,7 @@ def compare(argv):
         pass
 
     # Start extracting stuff
-    jobs = []
+    jobs, failed_jobs = [], []
     for name in argv[1:]:
         print(f'Reading {name}...', end="\r")
 
@@ -286,7 +367,7 @@ def compare(argv):
                 energies = [e/EH_TO_KCAL for e in energies]
 
             for i, energy in enumerate(energies):
-                job = Job(name[:-4]+f"_conf{i}", free_energy=options.g)
+                job = Job(name[:-4]+f"_conf{i}", energy_mode=energy_mode)
                 job.electronic_energy = energy
                 job.last_coords = mol.atomcoords[i]
                 job.atomnos = mol.atomnos
@@ -296,16 +377,16 @@ def compare(argv):
         elif name.endswith(".out"):
             try:
 
-                if not previous_to_last_energy:
-                    ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {name} | tail -1').rstrip(" Eh").split()[-1])
-
-                else:
+                if previous_to_last_energy:
                     ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {name} | tail -2 | head -1').rstrip(" Eh").split()[-1])
 
-                job = Job(name, free_energy=options.g)
+                else:
+                    ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {name} | tail -1').rstrip(" Eh").split()[-1])
+
+                job = Job(name, energy_mode=energy_mode)
                 job.electronic_energy = ee
 
-                if options.g:
+                if options.g or options.h:
                     # d = freqdir + '/' if composite else ''
                     current = operating_system.getcwd()
                     file_folder = operating_system.path.dirname(name)
@@ -315,16 +396,25 @@ def compare(argv):
                     target_folder = operating_system.getcwd()
                     target_filename = operating_system.path.basename(name)
                     target_filename_abs = operating_system.path.join(target_folder, target_filename)
+                    job.freqfile = target_filename_abs
                     operating_system.chdir(current)
 
-                    gcorr = float(getoutput(f'grep \"G-E(el)\" {target_filename_abs} | tail -1').split()[2])
-                    job.gcorr = gcorr
-                    job.free_energy = ee + gcorr
+                    if options.g:
+                        gcorr = float(getoutput(f'grep \"G-E(el)\" {target_filename_abs} | tail -1').split()[2])
+                        job.gcorr = gcorr
+                        job.free_energy = ee + gcorr
+
+                    else:
+                        hcorr = float(getoutput(f'grep \"Total correction\" {target_filename_abs} | tail -1').split()[2])
+                        kbT = float(getoutput(f'grep \"Thermal Enthalpy correction\" {target_filename_abs} | tail -1').split()[4])
+                        job.hcorr_kbT = hcorr + kbT
+                        job.enthalpy = ee + hcorr + kbT
 
                 jobs.append(job)
 
             except (IndexError, ValueError) as e:
                 print(e)
+                failed_jobs.append(name)
                 pass
 
     if not jobs:
@@ -333,8 +423,13 @@ def compare(argv):
     print()
     jobs = sorted(jobs)
 
-    if options.g:
-        print(f"\nGrepped SP EE from this folder and G(corr) values from {freqdir}\n")
+    if options.g or options.h:        
+        letter = "G" if options.g else "H"
+        print(f"\nGrepped SP EE from this folder and {letter}(corr) values from {freqdir}\n")
+
+        T = assert_homogeneous_temps(jobs)
+        print(f"\nConfirmed all jobs have the same temperature for thermochemistry " + 
+              f"({jobs[0].temperature:.2f} K = {jobs[0].temperature-273.15:.2f} °C)\n")
 
     maxlen = max([len(job.name) for job in jobs]) + 2
     min_e = min([job.get_comparison_energy() for job in jobs])
@@ -377,7 +472,7 @@ def compare(argv):
 
                 job.novelty = True
 
-        print(f'{job.name:<{maxlen}} - {round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 3): 10} {config}- [{iterations}{"" if converged else " iterations"}{running}]')
+        # print(f'{job.name:<{maxlen}} - {round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 3): 10} {config}- [{iterations}{"" if converged else " iterations"}{running}]')
 
     ### Print table
     print()
@@ -391,14 +486,53 @@ def compare(argv):
         table.add_row([i+1, job.name, job.electronic_energy])
 
     if options.g:
-        table.add_column('G_corr (Eh)', [job.gcorr for job in jobs])
+
+        if print_all_energies:
+            table.add_column('G_corr (Eh)', [job.gcorr for job in jobs])
+        else:
+            table.del_column('Electronic Energy (Eh)')
+
         table.add_column('G (Eh)', [job.gcorr+job.electronic_energy for job in jobs])
+
+    elif options.h:
+
+        if print_all_energies:
+            table.add_column('H_corr+kbT (Eh)', [job.hcorr_kbT for job in jobs])
+        else:
+            table.del_column('Electronic Energy (Eh)')
+
+        table.add_column('H (Eh)', [job.enthalpy for job in jobs])
         
-    letter = 'G' if options.g else 'EE'
+    letter = 'G' if options.g else ('H' if options.h else 'EE')
     table.add_column(f'Rel. {letter} (kcal/mol)', [round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 2) for job in jobs])
     table.add_column('Status', [tcolors.OKGREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC if job.completed
                            else (tcolors.WARNING + "RUNNING" + tcolors.ENDC if job.name in running_names
                             else tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC) for job in jobs])
+    
+    if options.g:
+
+        # add column with summary of frequency analysis
+        table.add_column('# of neg. freq.', [job.get_freq_str() for job in jobs])
+
+        homogeneous_ens = assess_consistent_natoms_charge(jobs)
+
+        if homogeneous_ens:
+
+            # now compute Boltzmann contributions and add a column
+            relative_energies_kcal = np.array([job.get_comparison_energy()*EH_TO_KCAL for job in jobs])
+            relative_energies_kcal = relative_energies_kcal - np.min(relative_energies_kcal)
+            k_rate_list = [get_eyring_k(e, T=T) for e in relative_energies_kcal]
+
+            boltzmann_pop = np.array([np.exp(-rel/(R*T)) for rel in relative_energies_kcal])
+            boltzmann_pop /= np.sum(boltzmann_pop)
+            boltzmann_pop_str = [round(100*s, 1) for s in boltzmann_pop]
+
+            table.add_column(f'% pop. ({T:.2f} K)', boltzmann_pop_str)
+
+            # compute ensemble contribution to
+            # overall dG but only print it later
+            A = K_BOLTZMANN * T / H_PLANCK
+            dG_obs = -R*T*np.log(sum(k_rate_list)/A)
 
     if options.stereochem:
         table.add_column('Abs. Config.', [job.config for job in jobs])
@@ -406,7 +540,22 @@ def compare(argv):
     if options.novel:
         table.add_column('Novelty', ["NEW" if job.novelty else "   " for job in jobs])
 
+    if failed_jobs:
+        field_index = {field: index for index, field in enumerate(table.field_names)}
+        for f, fjob in enumerate(failed_jobs, start=len(table.field_names)+1):
+            # table.add_row([f] + [fjob] + [None for _ in table.field_names[:-3]] + [tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC])
+            new_row = [None for _ in table.field_names]
+            new_row[field_index["#"]] = f
+            new_row[field_index["Filename"]] = fjob
+            new_row[field_index["Status"]] = tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC
+            table.add_row(new_row)
+
     print(table.get_string())
+
+    if options.g and homogeneous_ens:
+        print(f"\nEnsemble contribution correction to G(obs): ({T} K):\n" +
+                f"  {dG_obs:.3f} kcal/mol\n" +
+                f"  {dG_obs/EH_TO_KCAL:.12f} Eh\n")
 
     if options.stereochem:
         major_config = min(jobs, key=lambda job: job.get_comparison_energy()).config
@@ -420,9 +569,6 @@ def compare(argv):
         major_lowest_e = min(major_energies)
         minor_lowest_e = min(minor_energies)
         delta_kcal = (minor_lowest_e-major_lowest_e)*EH_TO_KCAL
-
-        R = 0.001985877534
-        T = (273.15+25)
 
         k = np.exp(-delta_kcal/(R*T))
         major_amt = round(100 / (k+1), 1)

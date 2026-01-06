@@ -1,0 +1,24 @@
+#  Define variables
+variable method1 = "wB97M-D3BJ def2-TZVPPD";
+variable extra_block_1 = "";
+variable extra_block_2 = "";
+
+# Perform popt at method1 level
+New_Step
+  ! &{method1} Opt Defgrid3 RIJCOSX
+
+    &{extra_block_1}
+
+Step_End
+Alias_Step m0
+
+# Perform saddle opt at method1 level
+New_Step
+  ! &{method1} OptTS TightOpt Defgrid3 Freq RIJCOSX
+
+    &{extra_block_2}
+
+Step_End
+Alias_Step m1
+
+end
