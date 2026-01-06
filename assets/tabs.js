@@ -6,11 +6,10 @@ function toggleTab(panelId, tabIndex) {
   // Get buttons within this panel
   let buttons = panel.getElementsByClassName("tab-button");
 
-  // Get all tabs in the document (like your original code)
+  // Get all tabs in the document
   let allTabs = document.getElementsByClassName("tab");
   
   // Find the starting index for this panel's tabs
-  // We'll use a data attribute or calculate based on panel order
   let panels = document.querySelectorAll(".tab-buttons");
   let startIndex = 0;
   
@@ -31,7 +30,23 @@ function toggleTab(panelId, tabIndex) {
 
   // Show the selected tab
   if (allTabs[startIndex + tabIndex]) {
-    allTabs[startIndex + tabIndex].style.display = "block";
+    let tabEl = allTabs[startIndex + tabIndex];
+    tabEl.style.display = "block";
+
+    // --- Lazy load iframes when the tab is shown ---
+    let iframe = tabEl.querySelector("iframe");
+    if (iframe && !iframe.src && iframe.dataset.src) {
+      iframe.src = iframe.dataset.src;
+    }
+
+    if (iframe) {
+      // Ask iframe to re-layout once it's visible
+      try {
+        iframe.contentWindow.postMessage({ type: "resize-please" }, "*");
+      } catch(e) {
+        console.warn("Could not postMessage to iframe:", e);
+      }
+    }
   }
 
   // Remove active class from all buttons in this panel
@@ -53,5 +68,5 @@ function initializeTabPanels() {
   }
 }
 
-// Run initialization immediately (like your original code)
+// Run initialization immediately
 initializeTabPanels();
