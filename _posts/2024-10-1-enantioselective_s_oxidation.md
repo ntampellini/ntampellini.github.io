@@ -61,7 +61,7 @@ tags: [interactive, computational_chemistry, publication]
 
 <!-- CONTENT -->
 
-> Click and drag to rotate, Ctrl+click/Mouse3 to move, scroll/right-click to zoom.
+> This post reuses figures and tables from an ACS Catalysis publication[^OrgLett]. Reproduction follows the ACS guidelines.[^ACS_guidelines]
 
 This blog post contains interactive visualization for the computational section of our work on the enantioselective S-oxidation of sulfoxides by an aspartic-acid containing tetrapeptide.[^OrgLett]
 
@@ -104,3 +104,4 @@ This blog post contains interactive visualization for the computational section 
 {: data-content="footnotes"}
 
 [^OrgLett]: The full paper is now published in [Organic Letters](https://pubs.acs.org/doi/10.1021/acs.orglett.4c02452).
+[^ACS_guidelines]: See [ACS guidelines for scholarly posting & sharing policies](https://pubs.acs.org/page/copyright/journals/posting_policies.html)
