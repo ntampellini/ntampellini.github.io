@@ -1,6 +1,7 @@
 # Set of utility functions for the scripts at https://ntampellini.github.io/scripts/
 
 import os
+import re
 
 import numpy as np
 from cclib.io import ccread
@@ -227,3 +228,53 @@ def get_ts_d_estimate(filename, indices, factor=1.35, verbose=True):
         print(f'--> Estimated TS d({a1}-{a2}) = {est_d} Å')
         
     return est_d
+
+
+def read_xyz_energies(filename, verbose=True):
+    '''
+    Read energies from a .xyz file. Returns None or an array of floats (in Hartrees).
+    '''
+    energies = None
+
+    # get lines right after the number of atom, which should contain the energy
+    comment_lines = getoutput(f'grep -A1 "^[[:space:]]*[0-9]\+$" {filename} | grep -v "^[[:space:]]*[0-9]\+$" | grep -v "^--$"').split("\n")
+
+    if len(comment_lines[0].split()) == 1:
+        if set(comment_lines[0].split()[0]).issubset('0123456789.-'):
+            # only one energy found with no UOM, assume it's in Eh
+            energies = [float(e.split()[0].strip()) for e in comment_lines]
+
+            if verbose:
+                print(f'--> Read {len(energies)} energies from {filename} (single number, no UOM: assuming Eh units).')
+
+        else:
+            if verbose:
+                print(f'--> Could not parse energies for {filename} - skipping.')
+
+    else:
+        # multiple energies found, parse units
+        hartree_matches = re.findall(r'-\d+.\d+\sEH', comment_lines[0].upper())
+        kcal_matches = re.findall(r'-\d+.\d+\sKCAL/MOL', comment_lines[0].upper())
+        number_matches = re.findall(r'-\d+.\d+', comment_lines[0])
+
+        if hartree_matches:
+            energies = [float(re.findall(r'-\d+.\d+\sEH', e.upper())[0].split()[0].strip()) for e in comment_lines]
+            if verbose:
+                print(f'--> Read {len(comment_lines)} energies from {filename} (first number followed by Eh units).')
+
+        elif kcal_matches:
+            energies = [float(re.findall(r'-\d+.\d+\sKCAL/MOL', e.upper())[0].split()[0].strip())/EH_TO_KCAL for e in comment_lines]
+            if verbose:
+                print(f'--> Read {len(comment_lines)} energies from {filename} (first number followed by kcal/mol units).')
+    
+        # last resort, parse the first thing that looks like an energy and assume it's in Eh
+        elif number_matches:
+            energies = [float(re.findall(r'-\d+.\d+', e)[0].strip()) for e in comment_lines]
+            if verbose:
+                print(f'--> Read {len(comment_lines)} energies from {filename} (first number, no UOM: assuming Eh units).')
+
+        else:
+            if verbose:
+                print(f'--> Could not parse energies for {filename} - skipping.')
+
+    return energies

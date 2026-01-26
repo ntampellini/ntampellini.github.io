@@ -17,8 +17,11 @@ parser.add_argument("-l", "--last", help="Last structure index (1-based).", acti
 args = parser.parse_args()
 mol = read_xyz(args.inputfile)
 
-for c, coords in enumerate(mol.atomcoords[int(args.first)-1:int(args.last)], start=1):
+if args.last == -1:
+    args.last = len(mol.atomcoords)
+
+for c, coords in enumerate(mol.atomcoords[int(args.first)-1:int(args.last)], start=int(args.first)):
     with open(f'{args.out_basename}{c}.xyz', 'w') as f:
         write_xyz(coords, mol.atomnos, f)
 
-print(f'Wrote {int(args.last)-int(args.first)+1} files. The first is {args.out_basename}1.xyz')
+print(f'Wrote {int(args.last)-int(args.first)+1} files. The first is {args.out_basename}{args.first}.xyz, the last is {args.out_basename}{args.last}.xyz')

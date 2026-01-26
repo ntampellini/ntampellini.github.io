@@ -1,6 +1,21 @@
-from dataclasses import dataclass, asdict
+import argparse
+import os
+import re
+import shutil
+import sys
+from dataclasses import asdict, dataclass
+from subprocess import getoutput, run
 
-####################################################
+import numpy as np
+from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
+from rich.traceback import install
+from utils import (all_dists, d_min_bond, dihedral, get_ts_d_estimate,
+                   graphize, multiplicity_check, norm_of, point_angle, pt,
+                   read_xyz, write_xyz)
+
+install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
+
 hourly_rate = 0.004 # $/(h*core)
 
 @dataclass
@@ -20,7 +35,7 @@ class Options:
     popt = False
     compound = False
     compound_job_scriptname = "optf+sp.cmp"
-    comp_job_extra_variables = ""
+    compound_job_extra_variables = dict()
     hh = False # hybrid hessian
 
     additional_kw_set = set()
@@ -30,6 +45,10 @@ class Options:
     @property
     def additional_kw_string(self):
         return ' '.join(str(s) for s in self.additional_kw_set)
+
+    @property
+    def compound_job_extra_variables_str(self):
+        return '\n'.join(f'    {k} = "{v}";' for k, v in self.compound_job_extra_variables.items())
 
 options = Options()
 
@@ -60,26 +79,6 @@ epsilon_dict = {
 # round temperature so it looks prettier
 options.temp = round(options.temp, 2)
 global_constraints = []
-
-####################################################
-
-import argparse
-import os
-import re
-import shutil
-import sys
-from subprocess import getoutput, run
-
-import numpy as np
-from InquirerPy import inquirer
-from InquirerPy.base.control import Choice
-from rich.traceback import install
-
-from utils import (all_dists, d_min_bond, dihedral, get_ts_d_estimate,
-                   graphize, multiplicity_check, norm_of, point_angle, pt,
-                   read_xyz, write_xyz, suppress_stdout_stderr)
-
-install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
 class Constraint:
     '''
@@ -128,6 +127,15 @@ def inquirer_set_options(args):
     # modify the option on the args namespace
     setattr(args, runtype, True)
 
+    set_solvent(args)
+
+def set_solvent(args):
+    """
+    Set the solvent option based on args or user input.
+    """
+
+    set_auto_solvent()
+
     if not any((args.compound, args.freqtemp, args.goat)):
         # set solvent model
         options.solvent_model = inquirer.select(
@@ -138,32 +146,60 @@ def inquirer_set_options(args):
                 Choice(value='SMD', name='SMD'),
             ),
             default='SMD' if args.sp else 'CPCM',
-            # validate=lambda result: result in epsilon_dict,
-            # invalid_message="Solvent not recognized."
         ).execute()
 
-    # NOTE: we should delay asking for the solvent to after the compound method has been picked
-    if (not args.freqtemp) and (options.solvent_model is not None or args.compound or args.goat):
+    if not (args.freqtemp or args.compound) and (options.solvent_model is not None):
         # set or confirm solvent
         options.solvent = inquirer.fuzzy(
             message=f"Current solvent is {options.solvent}. Press enter to confirm or type another solvent:",
             choices=epsilon_dict.keys(),
             default=options.solvent,
-            # validate=lambda result: result in epsilon_dict,
-            # invalid_message="Solvent not recognized."
         ).execute()
 
         if options.solvent in ("vacuum", "None"):
             options.solvent = None
 
+def set_comp_job_variables(cmpname):
+    """
+    Return the extra variables string for compound jobs.
+    """
+
+    lines = getoutput(f'grep "variable .* = \".*\";" {cmpname}').split("\n")
+    varnames = [line.split()[1] for line in lines]
+    defaults = [line.split('\"')[1] for line in lines]
+
+    for varname, default in zip(varnames, defaults):
+
+        if 'method' in varname:
+            if args.manual:
+                user_value = manual_inquire_level(pre_message=f'{varname}: ')
+            else:
+                user_value = default
+
+        elif 'solvent' in varname:
+
+            set_auto_solvent()
+
+            user_value = inquirer.fuzzy(
+                message=f'Specify solvent for compound job variable "{varname}":',
+                choices=epsilon_dict.keys(),
+                default=options.solvent,
+            ).execute()
+
+        else:
+            if args.manual:
+                user_value = inquirer.text(
+                    message=f'Specify value for compound job variable "{varname}" (default: {default}):',
+                    default=default,
+                ).execute()
+            else:
+                user_value = default
+
+        options.compound_job_extra_variables[varname] = user_value
+
 def get_comp_script_inp(rootname):
-    
-    if options.solvent is None:
-        solvent_line = ""
-    else:
-        solvent_line = f"solvent = \"{options.solvent}\";\n"
-    
-    string = f'''* xyzfile {options.charge} {options.mult} {rootname}.xyz
+        
+    return f'''* xyzfile {options.charge} {options.mult} {rootname}.xyz
     
 %pal
  nprocs {options.procs}
@@ -177,11 +213,10 @@ end
 
 %compound "{options.compound_job_scriptname}"
   with
-    {solvent_line}{options.comp_job_extra_variables}
+{options.compound_job_extra_variables_str}
 end
 
 '''
-    return string
 
 def get_freqtemp_inp(rootname):
     return f'''! PrintThermoChem
@@ -571,43 +606,117 @@ def get_goat_block():
 
     return s
 
-def inquire_level(default='wB97M-V'):
-
-    options.level = inquirer.select(
-            message="Which level of theory would you like to use?:",
+def manual_inquire_level(pre_message='') -> str:
+    """
+    Get a string specifying a theory level.
+    """
+    theory_level = inquirer.fuzzy(
+            message=f"{pre_message}Which DFT functional would you like to use?",
             choices=(
-                Choice(value='wB97M-D3BJ RIJCOSX def2-TZVPPD',
-                    name='* Rowan\'s benchmark - ωB97M(BJ)/def2-TZVPPD'),
+                'R2SCAN-3c',
+                'PBEh-3c',
+                'B3LYP-3c',
+                'wB97X-3c',
+                'B3LYP',
+                'PBE0',
+                'PBE',
+                'TPSS',
+                'TPSSh',
+                'wB97X-D4',
+                'wB97X-V',
+                'wB97M-V',
+                'M062X',
+                'wB97M(2)',
+                'B2PLYP',
+                'DLPNO-CCSD(T)',
+                ),
+            ).execute()
 
-                Choice(value='B3LYP D3BJ def2-TZVPP',
-                    name='B3LYP-D3(BJ)/def2-TZVPP  - GGA             ★★★☆☆'),
+    if (
+        ("-D" not in theory_level) and
+        ("-V" not in theory_level) and
+        ("-3c" not in theory_level) and
+        ("CC" not in theory_level)
+        ):
 
-                Choice(value='PBE0 def2-TZVPP',      
-                    name='PBE0/def2-TZVPP          - GGA             ★★★☆☆'),
-
-                Choice(value='R2SCAN-3c def2-TZVPP', 
-                    name='R²SCAN-3c                - (composite)     ★★★☆☆'),
-
-                Choice(value='wB97X-V def2-TZVPP',   
-                    name='ωB97X-V/def2-TZVPP       - GGA             ★★★★☆'),
-
-                Choice(value='wB97X-D4 def2-TZVPP',  
-                    name='ωB97X-D4/def2-TZVPP      - GGA             ★★★★☆'),
-
-                Choice(value='wB97M-V def2-TZVPP',   
-                    name='ωB97M-V/def2-TZVPP       - Meta-GGA        ★★★★☆'),
-
-                Choice(value='M062X def2-TZVPP',     
-                    name='M06-2X/def2-TZVPP        - Meta-GGA        ★★★★☆'),
-
-                Choice(value='wB97M(2) def2-TZVPP',       
-                    name='ωB97M(2)/def2-TZVPP      - Double Hybrid   ★★★★★ - (will copy .gbw from parent folder if not in current)'),
-                Choice(value='DLPNO-CCSD(T) def2-TZVPP def2-TZVPP/C RIJCOSX',  
-                    name='DLPNO-CCSD(T)/def2-TZVPP - Coupled Cluster ★★★★★'),
-
+        dispersion_correction = inquirer.select(
+            message=f"{pre_message}Which dispersion correction would you like to use?",
+            choices=(
+                Choice(value='D3BJ', name='D3(BJ)'),
+                Choice(value='D3', name='D3'),
+                Choice(value='D4', name='D4'),
+                Choice(value='NL', name='VV10 (NL)'),
+                Choice(value='SCNL', name='VV10 (SCNL)'),
+                Choice(value='', name='(None)'),
             ),
-            default=default,
+            default=False,
         ).execute()
+    
+    else:
+        dispersion_correction = ''
+
+    if "-3c" not in theory_level:
+
+        basis_set = inquirer.fuzzy(
+            message=f"{pre_message}Which basis set would you like to use?",
+            choices=(
+                'def2-SVP',
+                'def2-SV(P)',
+                'def2-TZVP',
+                'def2-TZVPP',
+                'def2-TZVPPD',
+                'def2-QZVPP',
+                'def2-QZVPPD',
+            ),
+        ).execute()
+
+    else:
+        basis_set = ''
+
+    return f"{theory_level} {dispersion_correction} {basis_set}".strip()
+
+def inquire_level(default='R2SCAN-3c'):
+
+    if args.manual:
+        options.level = manual_inquire_level()
+
+    else:
+        options.level = inquirer.select(
+                message="Which level of theory would you like to use?",
+                choices=(
+                    # Choice(value='wB97M-D3BJ RIJCOSX def2-TZVPPD',
+                    #     name='* Rowan\'s benchmark - ωB97M(BJ)/def2-TZVPPD'),
+
+                    Choice(value='B3LYP D3BJ def2-TZVPP',
+                        name='B3LYP-D3(BJ)/def2-TZVPP  - GGA             ★★★☆☆'),
+
+                    Choice(value='PBE0 def2-TZVPP',      
+                        name='PBE0/def2-TZVPP          - GGA             ★★★☆☆'),
+
+                    Choice(value='R2SCAN-3c', 
+                        name='R²SCAN-3c                - Meta-GGA        ★★★☆☆'),
+
+                    Choice(value='wB97X-V def2-TZVPP',   
+                        name='ωB97X-V/def2-TZVPP       - GGA             ★★★★☆'),
+
+                    Choice(value='wB97X-D4 def2-TZVPP',  
+                        name='ωB97X-D4/def2-TZVPP      - GGA             ★★★★☆'),
+
+                    Choice(value='wB97M-V def2-TZVPP',   
+                        name='ωB97M-V/def2-TZVPP       - Meta-GGA        ★★★★☆'),
+
+                    Choice(value='M062X def2-TZVPP',     
+                        name='M06-2X/def2-TZVPP        - Meta-GGA        ★★★★☆'),
+
+                    Choice(value='wB97M(2) def2-TZVPP',       
+                        name='ωB97M(2)/def2-TZVPP      - Double Hybrid   ★★★★★ - (will copy .gbw from parent folder if not in current)'),
+
+                    Choice(value='DLPNO-CCSD(T) def2-TZVPP def2-TZVPP/C RIJCOSX',  
+                        name='DLPNO-CCSD(T)/def2-TZVPP - Coupled Cluster ★★★★★'),
+
+                ),
+                default=default,
+            ).execute()
 
 def set_auto_solvent():
     '''
@@ -654,7 +763,7 @@ def set_auto_solvent():
 
     options.solvent = sorted([(n, solvent_list.count(n)) for n in set(solvent_list)], key=lambda x: x[1], reverse=True)[0][0]
 
-def copy_from_parent_if_not_here(filename):
+def copy_from_source_if_not_here(filename, source_folder="../"):
     '''
     Copy a file from the parent folder to the current,
     unless a file with the same name is already present
@@ -663,408 +772,416 @@ def copy_from_parent_if_not_here(filename):
     '''
 
     if not filename in os.listdir():
-        parent = os.path.dirname(os.getcwd())
-        if filename in os.listdir(parent):
-            source = os.path.join(parent, filename)
+
+        if filename in os.listdir(source_folder):
+            source = os.path.join(source_folder, filename)
             target = os.path.join(os.getcwd(), filename)
             shutil.copyfile(source, target)
-            print(f'--> Copied {filename} from parent folder to current folder.')
+            print(f'--> Copied {filename} from {source_folder} folder to current folder.')
         else:
             raise Exception(f'Could not find {filename} file in current nor parent folder.')
-                
-############################################################# START OF LOGIC
 
-# usage = (
-#     "\n  Makes one or more ORCA inputs following the desired specifications. Syntax:\n\n" +
-#     "  python mkorca.py conf*.xyz [option]\n\n" + 
-#     "  conf*.xyz: base name of input geometry file(s)\n" +
-#     "  option:\n" +
-#     "    sp:     single-point energy calculation.\n" +
-#     "    fastsp: fast single-point energy calculation.\n" +
-#     "    optf:   optimization + frequency calculation.\n" +
-#     "    popt:   partial optimization (specify distance/angle/dihedral constraints).\n" +
-#     "    ts:     eigenvector-following saddle point optimization.\n" +
-#     "    nmr:    single-point energy calculation with NMR shieldings.\n" + 
-#     "  Each of these options might have different default levels of theory. Manually check/modify this script at your convenience.\n"
-# )
+def manual_electronic_configuration():
+    '''
+    Manually set multiplicity and electonic state.
+    '''
 
-parser = argparse.ArgumentParser()
-parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
-parser.add_argument("-solvent", help="Set solvent to the specified one.", action="store", required=False)
-parser.add_argument("-sp", help="Set input type to SP.", action="store_true", required=False)
-parser.add_argument("-fastsp", help="Set input type to fast SP.", action="store_true", required=False)
-parser.add_argument("-ts", help="Set input type to TS.", action="store_true", required=False)
-parser.add_argument("-hh", help="Specify the use of a hybrid hessian.", action="store_true", required=False)
-parser.add_argument("-optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
-parser.add_argument("-popt",help="Set input type to partial optimization.", action="store_true", required=False)
-parser.add_argument("-scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
-parser.add_argument("-nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
-parser.add_argument("-tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
-parser.add_argument("-compound", help="Set input type to a compound method.", action="store_true", required=False)
-parser.add_argument("-irc", help="Set input type to IRC.", action="store_true", required=False)
-parser.add_argument("-priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
-parser.add_argument("-goat", help="Conformational search via GOAT.", action="store_true", required=False)
-parser.add_argument("-freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
-args = parser.parse_args()
+    choices = [
+        Choice(value=(1, False), name='S0 - Singlet ground state'),
+        Choice(value=(3, False), name='T1 - Triplet state'),
+        Choice(value=(1, True),  name='S1 - Singlet excited state'),
+    ]
 
-for filename in args.inputfiles:
-    if not filename.endswith(".xyz"):
-        args.inputfiles.remove(filename)
-        print(f"--> {filename} is not a structure file.")
+    options.mult, add_tddft_block = inquirer.select(
+            message=f'Specify desired electronic configuration of {rootname}:',
+            choices=choices,
+            # validate=lambda inp: inp.isdigit() and int(inp) > 0,
+            default=(1, False),
+        ).execute()
 
-    elif filename.endswith("_trj.xyz"):
-        args.inputfiles.remove(filename)
-        print(f"--> Ignoring {filename} as it appears to be a trajectory file.")
+    if add_tddft_block and not "%tddft" in options.extra_block:
+        options.extra_block += "%tddft\n  IRoot 1\nend\n"
 
-if not args.inputfiles:
-    raise Exception('No input structures selected. Please specify at least one.')
+if __name__ == "__main__":
 
-xyzname = args.inputfiles[0] if len(args.inputfiles) else None
+    parser = argparse.ArgumentParser()
+    parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
+    parser.add_argument("--solvent", help="Set solvent to the specified one.", action="store", required=False)
+    parser.add_argument("--sp", help="Set input type to SP.", action="store_true", required=False)
+    parser.add_argument("--fastsp", help="Set input type to fast SP.", action="store_true", required=False)
+    parser.add_argument("--ts", help="Set input type to TS.", action="store_true", required=False)
+    parser.add_argument("--hh", help="Specify the use of a hybrid hessian.", action="store_true", required=False)
+    parser.add_argument("--optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
+    parser.add_argument("--popt",help="Set input type to partial optimization.", action="store_true", required=False)
+    parser.add_argument("--scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
+    parser.add_argument("--nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
+    parser.add_argument("--tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
+    parser.add_argument("--compound", help="Set input type to a compound method.", action="store_true", required=False)
+    parser.add_argument("--irc", help="Set input type to IRC.", action="store_true", required=False)
+    parser.add_argument("--goat", help="Conformational search via GOAT.", action="store_true", required=False)
+    parser.add_argument("--freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
 
-set_auto_solvent()
+    parser.add_argument("--priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
+    parser.add_argument("--manual", help="Get more granular control.", action="store_true", required=False)
+    args = parser.parse_args()
 
-if not any((args.sp,
-            args.fastsp,
-            args.ts,
-            args.optf,
-            args.popt,
-            args.scan,
-            args.nmr,
-            args.tddft,
-            args.compound,
-            args.irc,
-            args.goat)):
-    inquirer_set_options(args)
+    for filename in args.inputfiles:
+        if not filename.endswith(".xyz"):
+            args.inputfiles.remove(filename)
+            print(f"--> {filename} is not a structure file.")
 
-if args.solvent:
-    print(f"--> Setting solvent to {options.solvent}")
+        elif filename.endswith("_trj.xyz"):
+            args.inputfiles.remove(filename)
+            print(f"--> Ignoring {filename} as it appears to be a trajectory file.")
 
-if args.sp or args.optf:
+    print(f'--> Specified {len(args.inputfiles)} input structure(s).')
 
-    inquire_level()
+    xyzname = args.inputfiles[0] if len(args.inputfiles) else None
 
-    options.opt = ""
-    options.freq = False
-    options.additional_kw_set.add("Defgrid3")
+    if not any((args.sp,
+                args.fastsp,
+                args.ts,
+                args.optf,
+                args.popt,
+                args.scan,
+                args.nmr,
+                args.tddft,
+                args.compound,
+                args.irc,
+                args.goat)):
+        inquirer_set_options(args)
 
-    if options.level == 'wB97M(2)':
-        options.additional_kw_set |= {"SCNL", "NoFrozenCore", "def2-TZVPP/C", "CALCGUESSENERGY" "NOITER"}
-        options.extra_block += "%scf\n  Guess MORead\n  MOInp \"$ROOTNAME.gbw\"\nend"
+    if args.solvent:
+        print(f"--> Setting solvent to {options.solvent}")
 
-if args.ts:
-    inquire_level()
-    options.opt = "OptTS"
-    options.mem = 8
-    options.freq = True
-    options.additional_kw_set |= {"TightOpt", "LARGEPRINT", "Defgrid3"}
-    options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
+    if args.sp or args.optf:
 
-    inquire_ts_mode_following()
+        inquire_level()
 
-if args.hh:
-   
-    hh_ids = input("Hybrid Hessian: provide indices involved in TS: ")
+        options.opt = ""
+        options.freq = False
+        options.additional_kw_set.add("Defgrid3")
 
-    if hh_ids == "":
+        if options.level == 'wB97M(2)':
+            options.additional_kw_set |= {"SCNL", "NoFrozenCore", "def2-TZVPP/C", "CALCGUESSENERGY" "NOITER"}
+            options.extra_block += "%scf\n  Guess MORead\n  MOInp \"$ROOTNAME.gbw\"\nend"
 
-        popt_ids = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
-        
-        if popt_ids:
-            if inquirer.confirm(f"Would you like to use indices from the previous popt? [{popt_ids}]", default=True):
-                hh_ids = popt_ids
+    if args.ts:
+        inquire_level()
+        options.opt = "OptTS"
+        options.mem = 8
+        options.freq = True
+        options.additional_kw_set |= {"TightOpt", "LARGEPRINT", "Defgrid3"}
+        options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
 
+        inquire_ts_mode_following()
+
+    if args.hh:
+    
+        hh_ids = input("Hybrid Hessian: provide indices involved in TS: ")
+
+        if hh_ids == "":
+
+            popt_ids = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
+            
+            if popt_ids:
+                if inquirer.confirm(f"Would you like to use indices from the previous popt? [{popt_ids}]", default=True):
+                    hh_ids = popt_ids
+
+                else:
+                    print('Please specify hybrid hessian-excluded indices.')
+                    sys.exit()
             else:
                 print('Please specify hybrid hessian-excluded indices.')
                 sys.exit()
+
+    if args.optf:
+        options.opt = "Opt"
+
+        options.freq = inquirer.confirm(message='Run frequency calculation?', default=False).execute()
+        if inquirer.confirm(message='LARGEPRINT? (writes orbital information to .out)', default=False).execute():
+            options.additional_kw_set.add("LARGEPRINT")
+        options.additional_kw_set |= {"TightOpt", "Defgrid3"}
+
+    if args.popt:
+        options.freq = False
+        options.opt = "Opt"
+        options.popt = True
+        options.additional_kw_set.add("Defgrid3")
+
+        inquire_constraints(xyzname=xyzname)
+
+    if args.scan:
+        options.opt = "Opt"
+
+        # make scan %geom block and add it to the extra block
+        options.constr_block += get_scan_block(args.inputfiles[0])
+
+        if inquirer.confirm(message="Would you like to perform a saddle optimization " +
+                        f"using the scan maximum energy structure as a starting point?",
+                        default=True).execute():
+            options.additional_kw_set.add("ScanTS")
+
+    if args.tddft:
+
+        inquire_level()
+
+        options.opt = inquirer.select(
+            message="Which kind of calculation would you like to run?",
+            choices=[
+                Choice(value="Opt", name="opt(f)"),
+                Choice(value="", name="sp"),
+            ]
+        ).execute()
+
+        if options.opt == "Opt":
+            options.freq = inquirer.confirm(
+            message="Run frequency calculation?",
+            default=False,
+        ).execute()
+            
+        
+        options.extra_block += inquirer.select(
+            message="Which kind of calculation would you like to run?",
+            choices=[
+                Choice(value=f"%tddft\n  NRoots 10\nend\n", name="Compute the first 10 excitations from the ground state"),
+                Choice(value=f"%tddft\n  IRoot 1\nend\n", name="Optimize to the first excited state"),
+            ]
+        ).execute()
+
+        options.additional_kw_set.add("Defgrid3")
+
+    if args.nmr:
+        options.freq = False
+        options.opt = ""
+
+        if args.manual:
+            inquire_level()
         else:
-            print('Please specify hybrid hessian-excluded indices.')
-            sys.exit()
+            options.level = 'PBE0 6-311+G(2d,p)'
 
-if args.optf:
-    options.opt = "Opt"
-
-    options.freq = inquirer.confirm(message='Run frequency calculation?', default=False).execute()
-    if inquirer.confirm(message='LARGEPRINT? (writes orbital information to .out)', default=False).execute():
-        options.additional_kw_set.add("LARGEPRINT")
-    options.additional_kw_set |= {"TightOpt", "Defgrid3"}
-
-if args.popt:
-    options.freq = False
-    options.opt = "Opt"
-    options.popt = True
-    options.additional_kw_set.add("Defgrid3")
-
-    inquire_constraints(xyzname=xyzname)
-
-if args.scan:
-    # options.opt = "Opt"
-
-    # make scan %geom block and add it to the extra block
-    options.constr_block += get_scan_block(args.inputfiles[0])
-
-    if inquirer.confirm(message="Would you like to perform a saddle optimization " +
-                     f"using the scan maximum energy structure as a starting point?",
-                     default=True).execute():
-        options.additional_kw_set.add("ScanTS")
-
-if args.tddft:
-
-    inquire_level()
-
-    options.opt = inquirer.select(
-        message="Which kind of calculation would you like to run?",
-        choices=[
-            Choice(value="Opt", name="opt(f)"),
-            Choice(value="", name="sp"),
-        ]
-    ).execute()
-
-    if options.opt == "Opt":
-        options.freq = inquirer.confirm(
-        message="Run frequency calculation?",
-        default=False,
-    ).execute()
-        
-    
-    options.extra_block += inquirer.select(
-        message="Which kind of calculation would you like to run?",
-        choices=[
-            Choice(value=f"%tddft\n  NRoots 10\nend\n", name="Compute the first 10 excitations from the ground state"),
-            Choice(value=f"%tddft\n  IRoot 1\nend\n", name="Optimize to the first excited state"),
-        ]
-    ).execute()
-
-    options.additional_kw_set.add("Defgrid3")
-
-if args.nmr:
-    options.freq = False
-    options.opt = ""
-    options.level = 'PBE0 6-311+G(2d,p)'
-    options.additional_kw_set |= {"NMR", "Defgrid3"}
-
-if args.compound:
-
-    options.opt = "Opt"
-
-    choices = [
-            Choice(value="optf+sp.cmp", name='optf+sp.cmp - Unconstrained opt., freq. calc., single point energy calc.'),
-            Choice(value="optf+sp_vacuum.cmp", name='optf+sp_vacuum.cmp - Unconstrained opt., freq. calc., single point energy calc. in vacuum.'),
-            Choice(value="f+sp.cmp", name='f+sp.cmp  - freq. calc., single point energy calc.'),
-            Choice(value="popt+saddle+sp.cmp", name='popt+saddle+sp.cmp  - Constrained opt., saddle point opt., freq. calc., single point energy calc.'),
-        ]
-
-    script_folder = os.path.dirname(os.path.realpath(__file__))
-    choices_values = [c.value for c in choices]
-    extra_compound_scripts = [Choice(value=name, name=name) for name in os.listdir(script_folder) if 
-                              (name.endswith('.cmp') and name not in choices_values)]
-
-    options.compound_job_scriptname = inquirer.select(
-        message='What compound script would you like to run?',
-        choices=choices + extra_compound_scripts,
-        default="optf+sp.cmp",
-    ).execute()
-
-    try:
-        source = os.path.join(script_folder, options.compound_job_scriptname)
-        shutil.copyfile(source, options.compound_job_scriptname)
-        print(f'--> Copied {options.compound_job_scriptname} to input file folder.')
-    except Exception:
-        raise Exception(f'Something went wrong when copying {options.compound_job_scriptname} to the destination folder.')
-    
-    if "popt" in options.compound_job_scriptname:
-        inquire_constraints(xyzname=xyzname)
-        inquire_ts_mode_following()
-        options.comp_job_extra_variables = f'    extra_block_1 = \"{options.constr_block}\";\n    extra_block_2 = \"{options.extra_block}\";\n'
-        options.freq = True
-
-if args.irc:
-
-    use_old_hessian = inquirer.select(
-        message='Use previous hessian or recompute?',
-        choices=(
-            Choice(value=True, name='Use old Hessian (assumes same-name \"filename.hess\")'),
-            Choice(value=False, name='Recompute'),
-        ),
-        default=True,
-    ).execute()
-
-    if use_old_hessian:
-        options.extra_block += f"%geom\n  InHess  Read\n  InHessName  \"$ROOTNAME.hess\"\nend"
-
-    else:
-        options.freq = True
-
-    options.additional_kw_set |= {"IRC", "Defgrid3"}
-    options.opt = ""
-
-if args.goat:
-    options.level = inquirer.select(
-            message="What level of theory would you like to use?",
-            choices=(
-                Choice(value='GFN-FF', name='GFN-FF'),
-                Choice(value='GFN2-XTB', name='GFN2-XTB (will still request GFN-FF for the uphill steps)'),
-            ),
-            default='GFN-FF',
-        ).execute()
-
-    options.opt = ""
-    options.additional_kw.add("GOAT")
-    options.solvent_model = 'ALPB'
-    options.extra_block += get_goat_block()
-
-    if inquirer.confirm(
-                message="Do you wish to specify any constraint?",
-                default=False,
-            ).execute():
-        inquire_constraints(xyzname=xyzname)
-
-# if args.neb:
-    # inquire_level()
-    # options.opt = "OptTS"
-    # options.mem = 8
-    # options.freq = True
-    # options.additional_kw_set |= {"TightOpt", "LARGEPRINT", "Defgrid3"}
-    # options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
-
-    # inquire_ts_mode_following()
-
-if args.freqtemp:
-    ans = inquirer.text(message="Specify the new temperature for the vibrational correction, in degrees Celsius:").execute()
-    options.temp = round(float(ans) + 273.15, 2)
-
-if options.freq:
-
-    options.temp = inquirer.text(
-            message=f'Frequency calculation temperature? (in °C):',
-            default='25',
-            filter=float,
-                ).execute() + 273.15
-
-    options.temp = round(options.temp, 2)
-
-    # Make sure to add Freq for appropriate calculations if we have not already
-    if "Freq" not in options.additional_kw_string:
-        options.additional_kw_set.add("Freq")
-
-# Inquire about automatic charges based on file names
-allchars = ''.join(args.inputfiles)
-auto_charges = False
-if '+' in allchars or '-' in allchars:
-    auto_charges = inquirer.confirm(
-        message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
-        default=True,
-    ).execute()
-
-extra_kws = inquirer.text(
-            message=f'Additional keywords?:',
-            default='',
-                ).execute()
-if extra_kws:
-    for kw in extra_kws.split():
-        options.additional_kw_set.add(kw)
-
-# print options
-print()
-for option, value in asdict(options).items():
-   if value != "":
-       print(f"--> {option} = {value}")
-print()
-
-# calculate processors to use for each job and ask if user wants to override
-if args.freqtemp:
-    procs_list = [1 for filename in args.inputfiles]
-
-else:
-    procs_list = [get_procs(filename.split('.')[0]) for filename in args.inputfiles]
-    if newprocs := inquirer.text(
-            message=f'Automatic number of cores is {procs_list[0]}. Type a different number to override or enter to confirm.'
-                ).execute():
-        procs_list = [int(newprocs) for _ in procs_list]
-
-cum_cost, cum_cpu, cum_mem = 0, 0, 0
-
-#################################################################################### COPY STUFF FROM PARENT FOLDER
-
-# make sure we have all the required files for the job in the submission folder
-
-# wB97M(2) needs the gbw file (copy from parent folder)
-if options.level == 'wB97M(2)':
-    for filename in args.inputfiles:
-        wfn = filename[:-4]+".gbw"
-        copy_from_parent_if_not_here(wfn)
-        
-# freqtemp needs the hessian (copy from parent folder)
-if args.freqtemp:
-    for filename in args.inputfiles:
-        hessname = filename[:-4]+".hess"
-        copy_from_parent_if_not_here(hessname)
-
-#################################################################################### WRITE INPs, PRINT JOB TABLE
-
-# start printing job table
-table = f'#    Filename                       Cores  Mem(GB)  Charge  Mult    Max cost (24h)\n'
-table += '----------------------------------------------------------------------------------\n'
-
-for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
-    rootname = filename.split('.')[0]
-    options.procs = procs
-    cost = get_daily_cost(procs, mem_per_core=options.mem)
-    cum_cost += cost
-    cum_cpu += procs
-    cum_mem += options.mem * procs
-
-    if auto_charges:
-        options.charge = rootname.count("+") - rootname.count("-")
-
-    if multiplicity_check(rootname, options.charge):
-        options.mult = 1
-    else:
-        options.mult = inquirer.text(
-            message=f'It appears {rootname} is not a singlet. Please specify multiplicity:',
-            validate=lambda inp: inp.isdigit() and int(inp) > 1,
-            default="2",
-        ).execute()
-
-    table += f'{str(f+1):>3}  {filename:30s} {procs:2}     {options.mem*procs:d}      {options.charge:>2}       {options.mult}       {cost:.2f} $\n'
+        options.additional_kw_set |= {"NMR", "Defgrid3"}
 
     if args.compound:
-        s = get_comp_script_inp(rootname)
 
-    elif args.freqtemp:
-        s = get_freqtemp_inp(rootname)
+        options.opt = "Opt"
+
+        choices = [
+                Choice(value="optf+sp.cmp", name='optf+sp.cmp - Unconstrained opt., freq. calc., single point energy calc.'),
+                Choice(value="optf+sp_vacuum.cmp", name='optf+sp_vacuum.cmp - Unconstrained opt., freq. calc., single point energy calc. in vacuum.'),
+                Choice(value="f+sp.cmp", name='f+sp.cmp  - freq. calc., single point energy calc.'),
+                Choice(value="popt+saddle+sp.cmp", name='popt+saddle+sp.cmp  - Constrained opt., saddle point opt., freq. calc., single point energy calc.'),
+            ]
+
+        script_folder = os.path.dirname(os.path.realpath(__file__))
+        choices_values = [c.value for c in choices]
+        extra_compound_scripts = [Choice(value=name, name=name) for name in os.listdir(script_folder) if 
+                                (name.endswith('.cmp') and name not in choices_values)]
+
+        options.compound_job_scriptname = inquirer.select(
+            message='What compound script would you like to run?',
+            choices=choices + extra_compound_scripts,
+            default="optf+sp.cmp",
+        ).execute()
+
+        copy_from_source_if_not_here(options.compound_job_scriptname, source_folder=script_folder)
+        set_comp_job_variables(options.compound_job_scriptname)
+        
+        if "popt" in options.compound_job_scriptname:
+            inquire_constraints(xyzname=xyzname)
+            inquire_ts_mode_following()
+            
+            options.compound_job_extra_variables["extra_block_1"] = options.constr_block
+            options.compound_job_extra_variables["extra_block_2"] = options.extra_block
+
+            # since freq calc must be in the compound job,
+            # make sure to request the procs for it
+            options.freq = True
+
+    if args.irc:
+
+        use_old_hessian = inquirer.select(
+            message='Use previous hessian or recompute?',
+            choices=(
+                Choice(value=True, name='Use old Hessian (assumes same-name \"filename.hess\" is here)'),
+                Choice(value=False, name='Recompute'),
+            ),
+            default=True,
+        ).execute()
+
+        if use_old_hessian:
+            options.extra_block += f"%geom\n  InHess  Read\n  InHessName  \"$ROOTNAME.hess\"\nend"
+
+        else:
+            options.freq = True
+
+        options.additional_kw_set |= {"IRC", "Defgrid3"}
+        options.opt = ""
+
+    if args.goat:
+        options.level = inquirer.select(
+                message="What level of theory would you like to use?",
+                choices=(
+                    Choice(value='GFN-FF', name='GFN-FF'),
+                    Choice(value='GFN2-XTB', name='GFN2-XTB (will still request GFN-FF for the uphill steps)'),
+                ),
+                default='GFN-FF',
+            ).execute()
+
+        options.opt = ""
+        options.additional_kw.add("GOAT")
+        options.solvent_model = 'ALPB'
+        options.extra_block += get_goat_block()
+
+        if inquirer.confirm(
+                    message="Do you wish to specify any constraint?",
+                    default=False,
+                ).execute():
+            inquire_constraints(xyzname=xyzname)
+
+    # if args.neb:
+        # inquire_level()
+        # options.opt = "OptTS"
+        # options.mem = 8
+        # options.freq = True
+        # options.additional_kw_set |= {"TightOpt", "LARGEPRINT", "Defgrid3"}
+        # options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
+
+        # inquire_ts_mode_following()
+
+    if args.freqtemp:
+        ans = inquirer.text(message="Specify the new temperature for the vibrational correction, in degrees Celsius:").execute()
+        options.temp = round(float(ans) + 273.15, 2)
+
+    if options.freq:
+
+        options.temp = inquirer.text(
+                message=f'Frequency calculation temperature? (in °C):',
+                default='25',
+                filter=float,
+                    ).execute() + 273.15
+
+        options.temp = round(options.temp, 2)
+
+        # Make sure to add Freq for appropriate calculations if we have not already
+        if "Freq" not in options.additional_kw_string:
+            options.additional_kw_set.add("Freq")
+
+    # Inquire about automatic charges based on file names
+    allchars = ''.join(args.inputfiles)
+    auto_charges = False
+    if '+' in allchars or '-' in allchars:
+        auto_charges = inquirer.confirm(
+            message="Found charge signs in filenames (+/-). Auto assign charges in input files?",
+            default=True,
+        ).execute()
+
+    extra_kws = inquirer.text(
+                message=f'Additional keywords?:',
+                default='',
+                    ).execute()
+    if extra_kws:
+        for kw in extra_kws.split():
+            options.additional_kw_set.add(kw)
+
+    # print options
+    print()
+    for option, value in asdict(options).items():
+        if value != "":
+            print(f"--> {option} = {value}")
+    print()
+
+    # calculate processors to use for each job and ask if user wants to override
+    if args.freqtemp:
+        procs_list = [1 for filename in args.inputfiles]
 
     else:
-        s = get_inp(rootname, opt=options.opt != "")
+        procs_list = [get_procs(filename.split('.')[0]) for filename in args.inputfiles]
+        if newprocs := inquirer.text(
+                message=f'Automatic number of cores is {procs_list[0]}. Type a different number to override or enter to confirm.'
+                    ).execute():
+            procs_list = [int(newprocs) for _ in procs_list]
 
-    with open(f'{rootname}.inp', 'w') as f:
-        f.write(s)
+    cum_cost, cum_cpu, cum_mem = 0, 0, 0
 
-    # Convert all text files to Linux format
-    try:
-        with suppress_stdout_stderr():
-            run(f'dos2unix {rootname}.inp'.split())
-            run(f'dos2unix {rootname}.xyz'.split())
-    except FileNotFoundError:
-        pass
+    #################################################################################### COPY STUFF FROM PARENT FOLDER
 
-    # clean up multi-structure files into the last
-    # structure only and remove long comment lines
-    # in .xyz files that may stump ORCA
-    mol = read_xyz(rootname+".xyz")
-    with open(f"{rootname}.xyz", "w") as f:
-        write_xyz(mol.atomcoords[-1], mol.atomnos, f)
+    # make sure we have all the required files for the job in the submission folder
 
-table += '----------------------------------------------------------------------------------\n'
-table += f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n\n'
-print(table)
+    # wB97M(2) needs the gbw file (copy from parent folder)
+    if options.level == 'wB97M(2)':
+        for filename in args.inputfiles:
+            wfn = filename[:-4]+".gbw"
+            copy_from_source_if_not_here(wfn)
+            
+    # freqtemp needs the hessian (copy from parent folder)
+    if args.freqtemp:
+        for filename in args.inputfiles:
+            hessname = filename[:-4]+".hess"
+            copy_from_source_if_not_here(hessname)
 
-run_jobs = inquirer.confirm(
-        message="Run jobs for the newly generated input files?",
-        default=True,
-    ).execute()
+    #################################################################################### WRITE INPs, PRINT JOB TABLE
 
-if run_jobs:
-    inpnames = [name.split(".")[0]+".inp" for name in args.inputfiles]
+    # start printing job table
+    table = f'#    Filename                       Cores  Mem(GB)  Charge  Mult    Max cost (24h)\n'
+    table += '----------------------------------------------------------------------------------\n'
 
-    from orcasub_batch import main
-    main(inpnames, priority=args.priority)
+    for f, (filename, procs) in enumerate(zip(args.inputfiles, procs_list)):
+        rootname = filename.split('.')[0]
+        options.procs = procs
+        cost = get_daily_cost(procs, mem_per_core=options.mem)
+        cum_cost += cost
+        cum_cpu += procs
+        cum_mem += options.mem * procs
+
+        if auto_charges:
+            options.charge = rootname.count("+") - rootname.count("-")
+
+        if args.manual:
+            manual_electronic_configuration()
+
+        else:
+            if multiplicity_check(rootname, options.charge):
+                options.mult = 1
+            else:
+                options.mult = inquirer.text(
+                    message=f'It appears {rootname} is not a singlet. Please specify multiplicity:',
+                    validate=lambda inp: inp.isdigit() and int(inp) > 1,
+                    default="2",
+                ).execute()
+
+        table += f'{str(f+1):>3}  {filename:30s} {procs:2}     {options.mem*procs:d}      {options.charge:>2}       {options.mult}       {cost:.2f} $\n'
+
+        if args.compound:
+            s = get_comp_script_inp(rootname)
+
+        elif args.freqtemp:
+            s = get_freqtemp_inp(rootname)
+
+        else:
+            s = get_inp(rootname, opt=options.opt != "")
+
+        with open(f'{rootname}.inp', 'w') as f:
+            f.write(s)
+
+        # clean up multi-structure files into the last
+        # structure only and remove long comment lines
+        # in .xyz files that may stump ORCA
+        mol = read_xyz(rootname+".xyz")
+        with open(f"{rootname}.xyz", "w") as f:
+            write_xyz(mol.atomcoords[-1], mol.atomnos, f)
+
+    table += '----------------------------------------------------------------------------------\n'
+    table += f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n\n'
+    print(table)
+
+    run_jobs = inquirer.confirm(
+            message="Run jobs for the newly generated input files?",
+            default=True,
+        ).execute()
+
+    if run_jobs:
+        inpnames = [name.split(".")[0]+".inp" for name in args.inputfiles]
+
+        from orcasub_batch import main
+        main(inpnames, priority=args.priority)

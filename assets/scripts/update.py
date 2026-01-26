@@ -128,7 +128,7 @@ def update(name, prev_to_last=False):
 if __name__ == "__main__":
 
     done = []
-    inquire = True
+    inquire = False
 
     if inquire:
         prev_to_last = inquire_prev_to_last()

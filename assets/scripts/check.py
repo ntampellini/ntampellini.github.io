@@ -8,8 +8,11 @@ from cclib.io import ccread
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from numpy.linalg import norm
+from plot_absorption_spectrum import plot_absorption_spectrum
+from utils import dihedral, write_xyz, read_xyz_energies
+from rich.traceback import install
 
-from utils import dihedral, write_xyz
+install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
 EH_TO_KCAL = 627.5096080305927
 
@@ -184,7 +187,10 @@ def main(loop=False):
                 if ".CMP" in line.upper():
                     compound = True
 
-    filename = rootname + "_trj.xyz"
+                if "%TDDFT" in line.upper():
+                    plot_absorption_spectrum(rootname+".out")
+
+    filename = rootname + "_trj.xyz"      
 
     if filename in files and indices is not None:
 
@@ -384,34 +390,37 @@ def main(loop=False):
             plt.show()
             print("\n"+"_"*100+"\n")
 
-        filename = rootname + ".allxyz"
-        if filename in files:
+    filename = rootname + ".allxyz"
+    if filename in files:
 
-            with open(filename, "r") as f:
-                lines = f.readlines()
+        with open(filename, "r") as f:
+            lines = f.readlines()
 
-            lines = [line.replace(">", "") for line in lines]
+        lines = [line.replace(">", "") for line in lines]
 
-            filename = rootname + ".all.xyz"
-            with open(filename, "w") as f:
-                lines = f.writelines(lines)
+        filename = rootname + ".all.xyz"
+        with open(filename, "w") as f:
+            lines = f.writelines(lines)
 
-            mol = ccread(filename)
-            maximum_id = np.argmax(energies)
+        mol = ccread(filename)
+        energies = read_xyz_energies(filename)
+        maximum_id = np.argmax(energies)
 
-            with open(f"{rootname}_scan_max.xyz", "w") as f:
-                if len(scan_indices) == 2:
-                    units = 'dA'
-                else:
-                    units = 'θ°'
-                write_xyz(mol.atomcoords[maximum_id], mol.atomnos, f, f"Scan Maximum, {units[0]} = {round(distances[maximum_id], 3)} {units[1]}")
-
-            print(f"Extracted scan maximum ({units[0]} = {round(distances[maximum_id], 3)} {units[1]}) to {rootname}_scan_max.xyz")
-            print(f"Barrier height is {round(np.max(energies)-np.min(energies), 2)} kcal/mol")
-            print("\n")
-
+        if len(scan_indices) == 2:
+            distance = np.linalg.norm(mol.atomcoords[maximum_id][scan_indices[0]] - mol.atomcoords[maximum_id][scan_indices[1]])
         else:
-            print(f"No {filename} found in the current folder.")
+            distance = dihedral(mol.atomcoords[maximum_id][scan_indices])
+
+        with open(f"{rootname}_scan_max.xyz", "w") as f:
+            if len(scan_indices) == 2:
+                units = 'dA'
+            else:
+                units = 'θ°'
+            write_xyz(mol.atomcoords[maximum_id], mol.atomnos, f, f"Scan Maximum, {units[0]} = {round(distance, 3)} {units[1]}")
+
+        print(f"Extracted scan maximum ({units[0]} = {round(distance, 3)} {units[1]}) to {rootname}_scan_max.xyz")
+        print(f"Energy span in {filename} is {round((np.max(energies)-np.min(energies))*EH_TO_KCAL, 2)} kcal/mol")
+        print("\n")
 
     # else:
     #     lines = getoutput(f'grep \"Total DFT Energy\" {rootname}.property.txt')

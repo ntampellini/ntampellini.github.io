@@ -1,4 +1,5 @@
 import os as operating_system
+import re
 import sys
 from subprocess import getoutput
 
@@ -11,8 +12,9 @@ from firecode.utils import (graphize, read_xyz, suppress_stdout_stderr,
                             write_xyz)
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
-from InquirerPy.validator import PathValidator, NumberValidator
+from InquirerPy.validator import PathValidator
 from rich.traceback import install
+from utils import read_xyz_energies
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
@@ -48,7 +50,7 @@ class Options:
         return
 
 class Job:
-    def __init__(self, filename, energy_mode='EE'):
+    def __init__(self, filename, energy_mode='EE', freqdir="."):
         self.name = filename
 
         assert energy_mode in ('EE', 'H', 'G')
@@ -59,6 +61,12 @@ class Job:
             self.compare_via = 'enthalpy'
         else:
             self.compare_via = 'free_energy'
+
+        self.freqdir = freqdir
+        if self.freqdir == ".":
+            self.freqfile = self.name
+        else:
+            self.freqfile = operating_system.path.join(self.freqdir, operating_system.path.basename(self.name))
 
     @property
     def temperature(self):
@@ -79,6 +87,21 @@ class Job:
             return int(getoutput(f"grep xyzfile {self.name[:-4]}.inp").split()[2])
         except:
             return None
+
+    @property
+    def completed(self):
+        look_for = "ORCA TERMINATED NORMALLY"
+        return look_for in getoutput(f'grep \'{look_for}\' {self.name}')
+
+    def status_str(self, running_names):
+        if not self.name.endswith('.out'):
+            return "XYZ FILE"
+        if self.completed:
+            return tcolors.OKGREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC
+        if self.name in running_names:
+            return tcolors.WARNING + "RUNNING" + tcolors.ENDC
+        else:
+            return tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC
 
     def __gt__(self, other):
         return getattr(self, self.compare_via) > getattr(other, other.compare_via)
@@ -126,6 +149,36 @@ class Job:
         s = "s" if n_sets > 1 else ""
 
         return f"{color}{str(neg_freqs)} ({comment}), {n_sets} set{s}{tcolors.ENDC}"
+    
+    def read_energy(self, prev_to_last=False):
+        self.read_electronic_energy(prev_to_last=prev_to_last)
+        if self.compare_via == 'electronic_energy':
+            return
+        
+        elif self.compare_via == "free_energy":
+            return self.read_free_energy()
+        
+        elif self.compare_via == "enthalpy":
+            return self.read_enthalpy()
+
+    def read_electronic_energy(self, prev_to_last=False):
+        if prev_to_last:
+            ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {self.name} | tail -2 | head -1').rstrip(" Eh").split()[-1])
+        else:
+            ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {self.name} | tail -1').rstrip(" Eh").split()[-1])
+        self.electronic_energy = ee
+
+    def read_free_energy(self):
+        gcorr = float(getoutput(f'grep \"G-E(el)\" {self.freqfile} | tail -1').split()[2])
+        self.gcorr = gcorr
+        self.free_energy = self.electronic_energy + gcorr
+
+    def read_enthalpy(self):
+        hcorr = float(getoutput(f'grep \"Total correction\" {self.freqfile} | tail -1').split()[2])
+        kbT = float(getoutput(f'grep \"Thermal Enthalpy correction\" {self.freqfile} | tail -1').split()[4])
+        self.hcorr_kbT = hcorr + kbT
+        self.enthalpy = self.electronic_energy + hcorr + kbT
+
 
 def assert_homogeneous_temps(jobs) -> float:
     """Ensure Thermochemistry was carried out at the same temperature for each job.
@@ -155,7 +208,6 @@ def assess_consistent_natoms_charge(jobs) -> float:
         return False
 
     return True
-
 
 def compare(argv):
     '''
@@ -189,13 +241,23 @@ def compare(argv):
     avail_gcorrs.append(Choice(value=None,    name=f'?     Other folder  - choose another folder to read G(corr) values.'))
 
     choices = [
-        Choice(value="g",           name='G           - Use free energy as a comparison metric.', enabled=len(avail_gcorrs)>1),
-        Choice(value="h",           name='H           - Use enthalpy as a comparison metric.', enabled=False),
-        Choice(value="x",           name='extract     - extract structures to one or more new files.', enabled=False),
-        Choice(value="stereochem",  name='stereochem  - calculate/show stereochemistry around a set of atoms.', enabled=False),
-        Choice(value="novel",       name='novel       - only consider structures that are dissimilar to some others.', enabled=False),
-        Choice(value="scratch",     name='scratch     - scrape data from currently running jobs that were started in this folder.', enabled=False),
+        Choice(value="x",           name='extract      - extract structures to one or more new files.', enabled=False),
+        Choice(value="stereochem",  name='stereochem   - calculate/show stereochemistry around a set of atoms.', enabled=False),
+        Choice(value="novel",       name='novel        - only consider structures that are dissimilar to some others.', enabled=False),
+        Choice(value="scratch",     name='scratch      - scrape data from currently running jobs that were started in this folder.', enabled=False),
+        Choice(value="raise_errors",name='raise_errors - raise errors instead of skipping failed jobs.', enabled=False),
     ]
+
+    if any('.out' in arg for arg in argv[1:]):
+        choices.append(
+            Choice(value="g",           name='G            - Use free energy as a comparison metric.', enabled=len(avail_gcorrs)>1),
+        )
+        choices.append(
+            Choice(value="h",           name='H            - Use enthalpy as a comparison metric.', enabled=False),
+        )
+    else:
+        options.g = False
+        options.h = False
 
     options_to_set = inquirer.checkbox(
             message="Select options (spacebar to toggle, enter to confirm):",
@@ -268,6 +330,7 @@ def compare(argv):
     #     freqdir = '..'
 
     energy_mode = "EE"
+    freqdir = "."
 
     ### If we are interested in free energy, set appropriate lookup folder
     if options.g or options.h:
@@ -294,11 +357,13 @@ def compare(argv):
 
     if options.x:
         energy_thr = inquirer.text(
-            message="Extraction threshold from the most stable? (kcal/mol)",
+            message="Extraction threshold (kcal/mol) from the most stable? Leave blank to retain all.",
             default="5",
-            validate=lambda x: x.replace(".", "").isdigit(),
-            filter=lambda x: float(x),
+            validate=lambda x: (x.replace(".", "").isdigit() or x == ""),
+            filter=lambda x: (float(x) if x else None),
         ).execute()
+
+        energy_thr = energy_thr or 1e12
 
         outfolder = inquirer.filepath(
             message="Where do you want to extract structures?",
@@ -347,25 +412,16 @@ def compare(argv):
         # parse energies from .xyz comment line
         if name.endswith(".xyz"):
 
-            # get lines right after the number of atom, which should contain the energy
-            energies = getoutput(f'grep -A1 "^[0-9]\+$" {name} | grep -v "^[0-9]\+$" | grep -v "^--$"').split("\n")
-
-            relative = any(['Rel' in line for line in energies])
-
-            energies = [float(next(
-                            part for part in line.split() if (any(c == '.' for c in part) and
-                                                              set(part).issubset('0123456789.-'))))
-                        for line in energies]
-            
             # with .xyz files we read the structures here so that we can deal with
             # multiple structures in a single file
             mol = read_xyz(name)
-            assert len(mol.atomcoords) == len(energies)
-            
-            # if they are Relative, chances are they are in kcal/mol
-            if relative:
-                energies = [e/EH_TO_KCAL for e in energies]
+            energies = read_xyz_energies(name)
 
+            if energies is None:
+                energies = [0.0 for _ in mol.atomcoords]
+            else:
+                assert len(mol.atomcoords) == len(energies)
+            
             for i, energy in enumerate(energies):
                 job = Job(name[:-4]+f"_conf{i}", energy_mode=energy_mode)
                 job.electronic_energy = energy
@@ -376,45 +432,17 @@ def compare(argv):
         # parse ORCA output files 
         elif name.endswith(".out"):
             try:
-
-                if previous_to_last_energy:
-                    ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {name} | tail -2 | head -1').rstrip(" Eh").split()[-1])
-
-                else:
-                    ee = float(getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {name} | tail -1').rstrip(" Eh").split()[-1])
-
-                job = Job(name, energy_mode=energy_mode)
-                job.electronic_energy = ee
-
-                if options.g or options.h:
-                    # d = freqdir + '/' if composite else ''
-                    current = operating_system.getcwd()
-                    file_folder = operating_system.path.dirname(name)
-                    if file_folder:
-                        operating_system.chdir(file_folder)
-                    operating_system.chdir(freqdir)
-                    target_folder = operating_system.getcwd()
-                    target_filename = operating_system.path.basename(name)
-                    target_filename_abs = operating_system.path.join(target_folder, target_filename)
-                    job.freqfile = target_filename_abs
-                    operating_system.chdir(current)
-
-                    if options.g:
-                        gcorr = float(getoutput(f'grep \"G-E(el)\" {target_filename_abs} | tail -1').split()[2])
-                        job.gcorr = gcorr
-                        job.free_energy = ee + gcorr
-
-                    else:
-                        hcorr = float(getoutput(f'grep \"Total correction\" {target_filename_abs} | tail -1').split()[2])
-                        kbT = float(getoutput(f'grep \"Thermal Enthalpy correction\" {target_filename_abs} | tail -1').split()[4])
-                        job.hcorr_kbT = hcorr + kbT
-                        job.enthalpy = ee + hcorr + kbT
-
+                job = Job(name, energy_mode=energy_mode, freqdir=freqdir)
+                job.read_energy(prev_to_last=previous_to_last_energy)
                 jobs.append(job)
 
             except (IndexError, ValueError) as e:
                 print(e)
                 failed_jobs.append(name)
+
+                if options.raise_errors:
+                    raise e
+
                 pass
 
     if not jobs:
@@ -436,12 +464,6 @@ def compare(argv):
 
     for job in jobs:
         converged = getoutput(f'grep HURRAY {job.name}') != ''
-        iterations = "conv" if converged else getoutput(f'grep \"FINAL SINGLE POINT ENERGY\" {job.name} -c')
-        running = ', Running' if scratchdir in job.name else ''
-
-        # save job.completed attribute
-        look_for = "ORCA TERMINATED NORMALLY"
-        job.completed = getoutput(f'grep \'{look_for}\' {job.name}') != ''
 
         if options.stereochem:
             try:
@@ -450,10 +472,6 @@ def compare(argv):
                 
             except AssertionError:
                 job.config = '?'
-
-            config = f'- {job.config} '
-        else:
-            config = ''
 
         if options.novel:
 
@@ -502,12 +520,15 @@ def compare(argv):
             table.del_column('Electronic Energy (Eh)')
 
         table.add_column('H (Eh)', [job.enthalpy for job in jobs])
+
+    # correct table header name for .xyz files
+    elif not any('.out' in job.name for job in jobs):
+        table.del_column('Electronic Energy (Eh)')
+        table.add_column('Parsed Energy (Eh)', [job.get_comparison_energy() for job in jobs])
         
-    letter = 'G' if options.g else ('H' if options.h else 'EE')
+    letter = 'G' if options.g else ('H' if options.h else 'E')
     table.add_column(f'Rel. {letter} (kcal/mol)', [round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 2) for job in jobs])
-    table.add_column('Status', [tcolors.OKGREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC if job.completed
-                           else (tcolors.WARNING + "RUNNING" + tcolors.ENDC if job.name in running_names
-                            else tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC) for job in jobs])
+    table.add_column('Status', [job.status_str(running_names) for job in jobs])
     
     if options.g:
 
