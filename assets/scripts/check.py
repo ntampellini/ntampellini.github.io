@@ -1,25 +1,30 @@
 import os
+from getpass import getuser
 import sys
 from subprocess import getoutput
 
 import numpy as np
 import plotext as plt
-from cclib.io import ccread
+from firecode.units import EH_TO_KCAL
+from firecode.utils import read_xyz, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from numpy.linalg import norm
-from plot_absorption_spectrum import plot_absorption_spectrum
-from utils import dihedral, write_xyz, read_xyz_energies
+from prism_pruner.algebra import dihedral
 from rich.traceback import install
+
+from plot_absorption_spectrum import plot_absorption_spectrum
+from utils import read_xyz_energies
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
-EH_TO_KCAL = 627.5096080305927
+username = getuser()
+scratchdir = f'/nfs/roberts/scratch/pi_sjm76/{username}'
 
 def print_ts_mode_characterization(rootname):
     # if one is a TS mode, characterize it
-    mode_block = getoutput('grep -E "^\s*[0-9]+\.\s+B\([A-Z]\s*[0-9]+,[A-Z]\s*[0-9]+\)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?' +
-        f'[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s+([-+]?[0-9]*\.[0-9]+)\s*$" {rootname}.out')
+    mode_block = getoutput('grep -E "^\\s*[0-9]+\\.\\s+B\\([A-Z]\\s*[0-9]+,[A-Z]\\s*[0-9]+\\)\\s+([-+]?[0-9]*\\.[0-9]+)\\s+([-+]?' +
+        f'[0-9]*\\.[0-9]+)\\s+([-+]?[0-9]*\\.[0-9]+)\\s+([-+]?[0-9]*\\.[0-9]+)\\s+([-+]?[0-9]*\\.[0-9]+)\\s*$" {rootname}.out')
     
     if mode_block != '':
         mode_lines = [line for line in mode_block.split("\n")]
@@ -49,7 +54,6 @@ def main(loop=False):
     compound = False
     indices = None
     zoom = False
-    scratchdir = '/vast/palmer/scratch/miller/nt383'
 
     # if no outname is provided, list running jobs
     if len(sys.argv) == 1 or loop:
@@ -121,7 +125,7 @@ def main(loop=False):
 
     if rootname.endswith(".xyz"):
 
-        energies = [float(line.split()[-1]) for line in getoutput(f'grep \'E.*-\d*.\' {rootname}').split('\n')]
+        energies = [float(line.split()[-1]) for line in getoutput(f'grep \'E.*-\\d*.\' {rootname}').split('\n')]
         energies_kcal = np.array(energies) * EH_TO_KCAL
         energies_kcal -= min(energies_kcal)
 
@@ -176,13 +180,13 @@ def main(loop=False):
 
                     elif frags[0] == "D":
                         # scantype = "dihedral"
-                        scan_indices = tuple([int(i) for i in frags[1:5]])
+                        scan_indices = np.array([int(i) for i in frags[1:5]])
 
                     else:
                         scan = False
 
-                # if "NEB" in line.upper():
-                #     neb = True
+                if "%NEB" in line.upper():
+                    neb = True
 
                 if ".CMP" in line.upper():
                     compound = True
@@ -194,15 +198,15 @@ def main(loop=False):
 
     if filename in files and indices is not None:
 
-        mol = ccread(filename)
+        mol = read_xyz(filename)
 
         if len(indices) == 2:
-            y = [norm(c[indices[0]]-c[indices[1]]) for c in mol.atomcoords]
+            y = [norm(c[indices[0]]-c[indices[1]]) for c in mol.coords]
             tag = "distance (Å)"
             uom = "Å"
 
         elif len(indices) == 4:
-            y = [dihedral(c[indices]) for c in mol.atomcoords]
+            y = [dihedral(c[indices]) for c in mol.coords]
             tag = "dihedral angle (Degrees)"
             uom = "°"
 
@@ -225,41 +229,29 @@ def main(loop=False):
 
     for propname in propnames:
         if propname in files:
-            
-            # if not neb:
-                # with open(propname, 'r') as f:
-                #     energies = []
-                #     while True:
-                #         line = f.readline()
-                #         if "Total DFT Energy" in line:
-                #             energies.append(float(line.split()[6]))
 
-                #         if not line:
-                #             break
+            # GREP ENERGIES
             try:
-                energies = [float(line.split()[3]) for line in getoutput(f'grep -i \'&finalEnergy\' {propname}').split('\n')]
-            except IndexError:
-                energies = []
+                if neb:
+                    mepname = f"{rootname}_MEP_trj.xyz"
+                    if mepname in files:
+                        energies = read_xyz_energies(mepname, verbose=False)
+                    else:
+                        energies = []
+                        for name in files:
+                            if name.startswith(f'{rootname}_im') and name.endswith('.property.txt'):
+                                energies.append(float(getoutput(f'grep -i \"&finalEnergy\" {name}').split('\n')[0].split()[3]))
+                else:
+                    energies = [float(line.split()[3]) for line in getoutput(f'grep -i \'&finalEnergy\' {propname}').split('\n')]
+            
+            except IndexError as e:
+                print(e)
 
-            # else:
-                # energies = []
-                # lines = getoutput(f"grep \"Starting iterations:\" {rootname}.out -A 500 ").splitlines()
-                # # energies = [float(line.split()[3]) for line in lines[4:]]
-                # for line in lines[4:]:
-                #     try:
-                #         assert line.split()[0] != "Convergence"
-                #         energies.append(float(line.split()[3]))
-
-                #     except (IndexError, ValueError, AssertionError):
-                #         continue
-
-                # raise NotImplementedError()
-                # energies = []
+            energies = energies or []
         
             if len(energies) > 0:
-                last_E = energies[-1]
                 energies = np.array(energies)
-                energies -= np.min(energies) if not neb else 0
+                energies -= np.min(energies)
                 energies *= EH_TO_KCAL
                 x = np.arange(1,len(energies)+1)
                 
@@ -268,9 +260,13 @@ def main(loop=False):
                     x = x[-20:]
 
                 plt.cld()
-                plt.plot(x, energies, color=(215 if not neb else 37))
-                plt.xlabel("Iteration #")
-                plt.ylabel("Energy (kcal/mol)" if not neb else "ΔEE‡ TS(kcal/mol)")
+                plt.plot(x, energies, color=(37 if neb else 215))
+
+                if neb:
+                    plt.scatter(x, energies, color='red')
+
+                plt.xlabel("Structure #" if neb else "Iteration #")
+                plt.ylabel("latest Rel. E (kcal/mol)" if neb else "Energy (kcal/mol)")
                 plt.show()
                 print("\n")
                 os.system(f"grep HURRAY {rootname}.out | tail -1")
@@ -283,24 +279,35 @@ def main(loop=False):
                     print(f'FINAL FREE ENERGY    {float(g.split()[3])} Eh')
 
                 if scan:
-                    last_geom = getoutput(f"grep \"Storing optimized geometry in\" {rootname}.out | tail -1 | grep \"[0-9]\+\" -1 -o").split("\n")[-1] or 0
+                    last_geom = getoutput(f"grep \"Storing optimized geometry in\" {rootname}.out | tail -1 | grep \"[0-9]\\+\" -1 -o").split("\n")[-1] or 0
                     
                     try:
-                        total = getoutput(f"grep \"B [0-9]\+ [0-9]\+\" {rootname}.out").split()[-1]
+                        total = getoutput(f"grep \"B [0-9]\\+ [0-9]\\+\" {rootname}.out").split()[-1]
                     except IndexError:
-                        total = getoutput(f"grep \"B [0-9]\+ [0-9]\+\" {rootname}.out")
+                        total = getoutput(f"grep \"B [0-9]\\+ [0-9]\\+\" {rootname}.out")
 
                     print(f"\nLast optimized step is {int(last_geom)}/{total}")
 
                 if neb:
-                    os.system(f"grep \"Starting iterations:\" {rootname}.out -A 500 ")
+
+                    neb_table = getoutput(f"grep \"Starting iterations:\" {rootname}.out -A 500 ")
+                    highest_energies = [float(line.split()[3]) * EH_TO_KCAL for line in neb_table.split("\n") if is_nonempty(line) and line.split()[0] == "LBFGS"]
+                    
+                    plt.cld()
+                    plt.plot(highest_energies, color=215)
+                    plt.xlabel("Iteration #")
+                    plt.ylabel(f"max(EE)-min(EE) in string (kcal/mol)")
+                    plt.show()
+
+                    print("\n", neb_table, "\n")
+                    print(f"Energy span in {rootname}_MEP_trj.xyz is {(np.max(energies)-np.min(energies)):.2f} kcal/mol")
 
                 else:
-                    homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
-                    lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
+                    homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
+                    lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
                     
                     # if homo == "" and lumo == "":
-                    #     homo = getoutput(f"egrep \"^ *[0-9]* +1.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\-*[0-9]\+.[0-9]\+\" | tail -1")
+                    #     homo = getoutput(f"egrep \"^ *[0-9]* +1.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
                 
                     print(f"\nHOMO: {homo} eV")
                     print(f"LUMO: {lumo} eV")
@@ -332,28 +339,6 @@ def main(loop=False):
                         pass
             else:
                 print(f'No frequencies found in output file ({propname}).\n')
-
-            # out = ""
-            # with open(propname, 'r') as f:
-            #     line = f.readline()
-            #     for n in range(100000):
-            #         line = f.readline()
-                    
-            #         if "Vibrational frequencies" in line:
-            #             out += "\nVibrational Frequencies (first 10)\n"
-            #             while True:
-            #                 line = f.readline()
-            #                 if len(line.split()) > 1:
-            #                     out += line
-            #                     if line.split()[0] == "10":
-            #                         break
-
-            #         if not line:
-            #             if not out:
-            #                 out = f"\n\nNo frequencies found in output file ({propname})."
-            #             break
-                    
-            # print(out)
 
     scanname = f"{rootname}.relaxscanact.dat"
 
@@ -402,23 +387,26 @@ def main(loop=False):
         with open(filename, "w") as f:
             lines = f.writelines(lines)
 
-        mol = ccread(filename)
-        energies = read_xyz_energies(filename)
+        mol = read_xyz(filename)
+        energies = read_xyz_energies(filename, verbose=False)
         maximum_id = np.argmax(energies)
 
-        if len(scan_indices) == 2:
-            distance = np.linalg.norm(mol.atomcoords[maximum_id][scan_indices[0]] - mol.atomcoords[maximum_id][scan_indices[1]])
-        else:
-            distance = dihedral(mol.atomcoords[maximum_id][scan_indices])
-
-        with open(f"{rootname}_scan_max.xyz", "w") as f:
+        if scan:
             if len(scan_indices) == 2:
+                distance = np.linalg.norm(mol.coords[maximum_id][scan_indices[0]] - mol.coords[maximum_id][scan_indices[1]])
                 units = 'dA'
             else:
+                distance = dihedral(mol.coords[maximum_id][scan_indices])
                 units = 'θ°'
-            write_xyz(mol.atomcoords[maximum_id], mol.atomnos, f, f"Scan Maximum, {units[0]} = {round(distance, 3)} {units[1]}")
 
-        print(f"Extracted scan maximum ({units[0]} = {round(distance, 3)} {units[1]}) to {rootname}_scan_max.xyz")
+            print(f"Extracted scan maximum ({units[0]} = {round(distance, 3)} {units[1]}) to {rootname}_scan_max.xyz")
+            s = f"Scan Maximum, {units[0]} = {round(distance, 3)} {units[1]}"
+
+            with open(f"{rootname}_scan_max.xyz", "w") as f:
+                write_xyz(mol.atoms, mol.coords[maximum_id], f, s)
+        # else:
+        #     s = f"Maximum Energy, {round(energies[maximum_id]*EH_TO_KCAL, 2)} kcal/mol above minimum"
+
         print(f"Energy span in {filename} is {round((np.max(energies)-np.min(energies))*EH_TO_KCAL, 2)} kcal/mol")
         print("\n")
 
@@ -427,7 +415,7 @@ def main(loop=False):
     #     energies = [float(line.split()[6]) for line in lines]
 
     if compound:
-        os.system(f"grep \'\-\->\' {rootname}.out")
+        os.system(f"grep \'\\-\\->\' {rootname}.out")
 
     # if no outname was provided, loop
     if loop:

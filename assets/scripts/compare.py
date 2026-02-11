@@ -1,24 +1,26 @@
 import os as operating_system
-import re
+from getpass import getuser
 import sys
 from subprocess import getoutput
 
 import numpy as np
-from firecode.pruning import get_moi_deviation_vec
 from firecode.pt import pt
-from firecode.rmsd import rmsd_and_max_numba
 from firecode.units import EH_TO_KCAL
-from firecode.utils import (graphize, read_xyz, suppress_stdout_stderr,
-                            write_xyz)
+from firecode.utils import read_xyz, suppress_stdout_stderr, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import PathValidator
+from prism_pruner.algebra import get_inertia_moments
+from prism_pruner.graph_manipulations import graphize
+from prism_pruner.rmsd import rmsd_and_max
 from rich.traceback import install
+
 from utils import read_xyz_energies
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
-scratchdir = '/vast/palmer/scratch/miller/nt383'
+username = getuser()
+scratchdir = f'/nfs/roberts/scratch/pi_sjm76/{username}'
 
 ####################################################################################
 
@@ -117,7 +119,7 @@ class Job:
         
     def read_coords(self):
         if self.name.endswith(".out"):
-            self.last_coords = read_xyz(f'{self.name[:-4]}.xyz').atomcoords[-1]
+            self.last_coords = read_xyz(f'{self.name[:-4]}.xyz').coords[-1]
 
         elif self.name.endswith(".xyz"):
             raise NotImplementedError
@@ -125,9 +127,9 @@ class Job:
     def get_freq_str(self):
         n_atoms = int(getoutput(f'head {self.name[:-4]}.xyz -n 1'))
         n_freqs = 3 * n_atoms
-        is_ts = getoutput(f'grep -i \"\!.*optts\" {self.name[:-4]}.out') != ""
+        is_ts = getoutput(f'grep -i \"\\!.*optts\" {self.name[:-4]}.out') != ""
 
-        lines = getoutput(f'grep \" \+[0-9]\+: \+-*[0-9]\+\.[0-9]\+ cm\*\*-1\" {self.freqfile}').split('\n')
+        lines = getoutput(f'grep \" \\+[0-9]\\+: \\+-*[0-9]\\+\\.[0-9]\\+ cm\\*\\*-1\" {self.freqfile}').split('\n')
         freqs = [float(line.split()[1]) for line in lines]
 
         if len(freqs) < n_freqs:
@@ -245,6 +247,7 @@ def compare(argv):
         Choice(value="stereochem",  name='stereochem   - calculate/show stereochemistry around a set of atoms.', enabled=False),
         Choice(value="novel",       name='novel        - only consider structures that are dissimilar to some others.', enabled=False),
         Choice(value="scratch",     name='scratch      - scrape data from currently running jobs that were started in this folder.', enabled=False),
+        Choice(value="plot",        name='plot         - Plot energies over structure numbers.', enabled=False),
         Choice(value="raise_errors",name='raise_errors - raise errors instead of skipping failed jobs.', enabled=False),
     ]
 
@@ -284,7 +287,7 @@ def compare(argv):
                 only_files=True,
             ).execute()
 
-            comparison_structs.extend(read_xyz(filename).atomcoords)
+            comparison_structs.extend(read_xyz(filename).coords)
 
             if not inquirer.confirm(
                 message="Specify more files?",
@@ -418,15 +421,15 @@ def compare(argv):
             energies = read_xyz_energies(name)
 
             if energies is None:
-                energies = [0.0 for _ in mol.atomcoords]
+                energies = [0.0 for _ in mol.coords]
             else:
-                assert len(mol.atomcoords) == len(energies)
+                assert len(mol.coords) == len(energies)
             
             for i, energy in enumerate(energies):
                 job = Job(name[:-4]+f"_conf{i}", energy_mode=energy_mode)
                 job.electronic_energy = energy
-                job.last_coords = mol.atomcoords[i]
-                job.atomnos = mol.atomnos
+                job.last_coords = mol.coords[i]
+                job.atoms = mol.atoms
                 jobs.append(job)
 
         # parse ORCA output files 
@@ -449,7 +452,6 @@ def compare(argv):
         raise FileNotFoundError('No jobs found.')
 
     print()
-    jobs = sorted(jobs)
 
     if options.g or options.h:        
         letter = "G" if options.g else "H"
@@ -463,7 +465,7 @@ def compare(argv):
     min_e = min([job.get_comparison_energy() for job in jobs])
 
     for job in jobs:
-        converged = getoutput(f'grep HURRAY {job.name}') != ''
+        # converged = getoutput(f'grep HURRAY {job.name}') != ''
 
         if options.stereochem:
             try:
@@ -476,14 +478,17 @@ def compare(argv):
         if options.novel:
 
             last_coords = job.get_coords()
-            masses = np.array([pt[a].mass for a in job.atomnos])
+            masses = np.array([pt[a].mass for a in job.atoms])
             for reference in comparison_structs:
-                moi_dev_vec = get_moi_deviation_vec(last_coords, reference, masses)
+                # moi_dev_vec = get_moi_deviation_vec(last_coords, reference, masses)
+                im1 = get_inertia_moments(reference, masses)
+                im2 = get_inertia_moments(last_coords, masses)
+                moi_dev_vec = np.abs(im1 - im2) / im1
                 if np.all(moi_dev_vec < 0.01):
                     job.novelty = False
                     break
 
-                rmsd, maxdev = rmsd_and_max_numba(last_coords, reference, center=True)
+                rmsd, maxdev = rmsd_and_max(last_coords, reference, center=True)
                 if rmsd < 0.25 and maxdev < 0.5:
                     job.novelty = False
                     break
@@ -491,9 +496,28 @@ def compare(argv):
                 job.novelty = True
 
         # print(f'{job.name:<{maxlen}} - {round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 3): 10} {config}- [{iterations}{"" if converged else " iterations"}{running}]')
-
-    ### Print table
+    
     print()
+
+    if options.plot:
+        import plotext as plt
+        plt.theme("pro")
+        plt.plotsize(100,25)
+        plt.cld()
+
+        rel_energies_kcal = [(job.get_comparison_energy()-min_e)*EH_TO_KCAL for job in jobs]
+        plt.plot(rel_energies_kcal, color=37)
+        plt.scatter(rel_energies_kcal, color='red+')
+
+        plt.xlabel("Structure #")
+        plt.ylabel("Rel. Energy (kcal/mol)")
+        plt.show()
+
+        print(f"\n--> Energy span is {np.max(rel_energies_kcal)-np.min(rel_energies_kcal):.2f} kcal/mol")
+        print(f"\n--> Plot: not sorting by energy.\n")
+
+    else:
+        jobs = sorted(jobs)
 
     from prettytable import PrettyTable
 
@@ -625,7 +649,7 @@ def compare(argv):
                 f.write('\n\n')
                 f.write(xyzblock)
 
-        from prune import cl_similarity_refining
+        from prism_pruner.pruner import prune
 
         before = len(jobs)
         jobs = [job for job in jobs if (job.get_comparison_energy()-min_e)*EH_TO_KCAL < energy_thr]
@@ -655,20 +679,25 @@ def compare(argv):
 
                 mol = read_xyz(filename)
 
-                job.atomnos = mol.atomnos
-                job.last_coords = mol.atomcoords[-1]
+                job.atoms = mol.atoms
+                job.last_coords = mol.coords[-1]
         
         if options.novel:
             before = len(jobs)
             jobs = [job for job in jobs if job.novelty]
             print(f'Considering only novel structures: retaining {len(jobs)}/{before}')
 
-        coords = np.array([job.last_coords for job in jobs])
-        ref_graph = graphize(jobs[0].last_coords, jobs[0].atomnos)
+        print('Removing similar structures with PRISM Pruner...')
 
-        print('Removing similar structures...')
-        coords, payload = cl_similarity_refining(coords, jobs[0].atomnos, ref_graph, payload=[np.array(jobs, dtype=object)])
-        jobs = payload[0]
+        coords, mask = prune(
+            np.array([job.last_coords for job in jobs]),
+            jobs[0].atoms,
+            rot_corr_rmsd_pruning=True,
+            energies=np.array([job.get_comparison_energy()*EH_TO_KCAL for job in jobs]),
+            max_dE=2.0, # only compare structs <2 kcal apart
+            logfunction=print,
+            )
+        jobs = np.array(jobs, dtype=object)[mask]
 
         # in case we discarded the most stable, recompute and save Rel. E.s
         min_e = min([job.get_comparison_energy() for job in jobs])
@@ -686,7 +715,7 @@ def compare(argv):
                     title = f"{letter} = {job.get_comparison_energy()} Eh - Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
                     if options.g:
                         title += f" - gcorr(Eh) = {job.gcorr:8}"
-                    write_xyz(job.last_coords, job.atomnos, f, title=title)
+                    write_xyz(job.atoms, job.last_coords, f, title=title)
 
         # printing to a single new filename the user provided
         else:
@@ -695,7 +724,7 @@ def compare(argv):
                     title = f"{job.name} - {letter} = {job.get_comparison_energy()} Eh - Rel. {letter}. = {job.rel_energy:.3f} kcal/mol"
                     if options.g:
                         title += f" - G(corr)(Eh) = {job.gcorr:8}"
-                    write_xyz(job.last_coords, job.atomnos, f, title=title)
+                    write_xyz(job.atoms, job.last_coords, f, title=title)
 
             print(f"Wrote {len(jobs)} structures to {outname}.")
 

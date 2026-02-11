@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from subprocess import getoutput
 
 from rich.traceback import install
-from utils import read_xyz, write_xyz
+from firecode.utils import read_xyz, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
@@ -87,7 +87,7 @@ def update(name, prev_to_last=False):
                 title = ""
 
             with open(xyzname, "w") as f:
-                write_xyz(mol.atomcoords[-1], mol.atomnos, f, title=title)
+                write_xyz(mol.atoms, mol.coords[-1], f, title=title)
 
             print(f"Updated {xyzname}")
             
@@ -115,7 +115,7 @@ def update(name, prev_to_last=False):
                         title = ""
 
                     with open(xyzname, "w") as f:
-                        write_xyz(mol.atomcoords[-1], mol.atomnos, f, title=title)
+                        write_xyz(mol.atoms, mol.coords[-1], f, title=title)
 
                     print(f"Updated {xyzname} from {cmptraj}")
                     

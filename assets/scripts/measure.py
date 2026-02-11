@@ -1,16 +1,20 @@
 import os 
+import numpy as np
 import plotext as plt
 import sys
-from utils import read_xyz, norm_of, dihedral, point_angle
+from prism_pruner.algebra import dihedral
+from firecode.algebra import point_angle
+from firecode.utils import read_xyz
 
 plt.theme("pro")
 plt.plotsize(100, 25)
 
 def print_metadata(data):
-    print()
-    print(f"Avg {tag} = {sum(data)/len(data):8.3f} Å")
-    print(f"Max {tag} = {max(data):8.3f} Å")
-    print(f"Min {tag} = {min(data):8.3f} Å")
+    s = '-'.join([str(mol.atoms[i])+'('+str(i)+')' for i in indices])
+    print(f'\n--> Showing {s} {tag}.')
+    print(f"  Min = {min(data):8.3f} Å")
+    print(f"  Max = {max(data):8.3f} Å")
+    print(f"  Avg = {sum(data)/len(data):8.3f} Å")
     print()
 
 if len(less_than:=[kw for kw in sys.argv if "<" in kw]) > 0:
@@ -40,17 +44,17 @@ for filename in filenames:
     if len(indices) == 2:
         tag = "distance (A)"
         i1, i2 = indices
-        data = [norm_of(coords[i1]-coords[i2]) for coords in mol.atomcoords]
+        data = [np.linalg.norm(coords[i1]-coords[i2]) for coords in mol.coords]
     
     elif len(indices) == 3:
         tag = "planar angle (degrees)"
         i1, i2, i3 = indices
-        data = [point_angle(*coords[indices]) for coords in mol.atomcoords]
+        data = [point_angle(*coords[indices]) for coords in mol.coords]
 
     else:
         tag = "dihedral angle (degrees)"
         i1, i2, i3, i4 = indices
-        data = [dihedral(coords[indices]) for coords in mol.atomcoords]
+        data = [dihedral(coords[indices]) for coords in mol.coords]
 
     if len(filenames) == 1:
         plt.simple_bar(data, width=50)

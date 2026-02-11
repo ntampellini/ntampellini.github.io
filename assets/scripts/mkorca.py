@@ -4,15 +4,21 @@ import re
 import shutil
 import sys
 from dataclasses import asdict, dataclass
-from subprocess import getoutput, run
+from subprocess import getoutput
 
 import numpy as np
+from firecode.algebra import point_angle
+from firecode.pt import pt
+from firecode.utils import read_xyz, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
+from InquirerPy.validator import PathValidator
+from prism_pruner.algebra import dihedral
+from prism_pruner.graph_manipulations import d_min_bond, graphize
 from rich.traceback import install
-from utils import (all_dists, d_min_bond, dihedral, get_ts_d_estimate,
-                   graphize, multiplicity_check, norm_of, point_angle, pt,
-                   read_xyz, write_xyz)
+from scipy.spatial.distance import cdist
+
+from utils import get_ts_d_estimate, multiplicity_check
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
@@ -71,6 +77,8 @@ epsilon_dict = {
     "ethyl ethanoate" : 6.02,
     "phcf3" : 9.18,
     "toluene" : 2.38,
+    "methanol" : 32.7,
+    "meoh" : 32.7,
 
     "none" : None,
     "vacuum" : None,
@@ -107,21 +115,20 @@ def inquirer_set_options(args):
     runtype = inquirer.select(
         message="Which kind of input file would you like to generate?",
         choices=(
+            Choice(value='compound', name='compound - Choose a compound method routine.'),
             Choice(value='sp',       name='sp       - High-level DFT single-point energy calculation.'),
             Choice(value='optf',     name='opt(f)   - Geom. optimization (+ frequency calculation).'),
             Choice(value='popt',     name='popt     - Partial optimization (specify constraints).'),
             Choice(value='ts',       name='ts       - Saddle optimization + frequency calculation.'),
-            Choice(value='neb',      name='neb      - NEB-TS optimization with two input structures.'),
+            Choice(value='neb',      name='neb      - Double-ended TS search via NEB(-TS).'),
             Choice(value='goat',     name='goat     - Conformational search via GOAT.'),
-            Choice(value='compound', name='compound - Choose a compound method routine.'),
             Choice(value='scan',     name='scan     - Perform a distance/angle/dihedral scan.'),
-            Choice(value='fastsp',   name='fastsp   - Low-level DFT single-point energy calculation.'),
+            Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
             Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
             Choice(value='irc',      name='irc      - Intrinsic reaction coordinate calculation.'),
-            Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
             Choice(value='freqtemp', name='freqtemp - Recalculate vibrational corrections at a new temperature.'),
         ),
-        default='sp',
+        default='compound',
     ).execute()
 
     # modify the option on the args namespace
@@ -252,9 +259,6 @@ def get_inp(rootname, opt=True):
     maxstep_line = f'MaxStep {options.maxstep}'
     hess_line = "Calc_Hess true" if args.ts else ""
 
-    if options.hh:
-        hess_line += f'\n  Hybrid_Hess {"{"+hh_ids+"}"} end'
-
     geom_block = f'%geom\n\n  {maxstep_line}\n\n  {hess_line}\n\nend' if opt else ""
 
     solvent_keyword = {
@@ -317,13 +321,13 @@ def get_scan_block(filename):
     
     # read coordinates
     mol = read_xyz(filename)
-    coords = mol.atomcoords[-1]
+    coords = mol.coords[-1]
 
     # get start and end values, dertermine number of steps
     if c_type == "B":
         i1, i2 = indices
-        e1, e2 = pt[mol.atomnos[i1]], pt[mol.atomnos[i2]]
-        start_value = round(norm_of(coords[i1]-coords[i2]), 2)
+        e1, e2 = mol.atoms[i1], mol.atoms[i2]
+        start_value = round(np.linalg.norm(coords[i1]-coords[i2]), 2)
 
         if c_string.split()[-1] == "ts":
             ts_d_estimate = get_ts_d_estimate(filename, indices)
@@ -337,7 +341,7 @@ def get_scan_block(filename):
 
     if c_type == "A":
         i1, i2, i3 = indices
-        e1, e2, e3 = pt[mol.atomnos[i1]], pt[mol.atomnos[i2]], pt[mol.atomnos[i3]]
+        e1, e2, e3 = mol.atoms[i1], mol.atoms[i2], mol.atoms[i3]
         start_value = round(point_angle(coords[i1], coords[i2], coords[i3]), 2)
         target_value = round(float(c_string.split()[-1]))
 
@@ -345,7 +349,7 @@ def get_scan_block(filename):
 
     if c_type == "D":
         i1, i2, i3, i4 = indices
-        e1, e2, e3, e4 = pt[mol.atomnos[i1]], pt[mol.atomnos[i2]], pt[mol.atomnos[i3]], pt[mol.atomnos[i4]]
+        e1, e2, e3, e4 = mol.atoms[i1], mol.atoms[i2], mol.atoms[i3], mol.atoms[i4]
         start_value = round(dihedral(coords[np.array(indices)]), 2)
 
         if c_string.split()[-1] == 'full':
@@ -401,7 +405,7 @@ def get_daily_cost(procs, mem_per_core):
     else:
         return max(procs, procs*mem_per_core/15) * 24 * hourly_rate
 
-def get_potential_ts_bonds(coords, atomnos, graph):
+def get_potential_ts_bonds(atoms, coords, graph):
     '''
     Returns a list of Choice objects representing pairs of
     atoms in the provided structure that have a distance
@@ -413,17 +417,17 @@ def get_potential_ts_bonds(coords, atomnos, graph):
     high_ratio = 1.55
 
     potential_ts_bonds = []
-    for i1, dists in enumerate(all_dists(coords, coords)):
+    for i1, dists in enumerate(cdist(coords, coords)):
         for i2, dist in enumerate(dists):
             if i2 > i1 and ((i1, i2) not in graph.edges):
-                bondlength = d_min_bond(atomnos[i1], atomnos[i2], factor=1)
+                bondlength = d_min_bond(atoms[i1], atoms[i2], factor=1)
                 ratio = dist/bondlength
                 if low_ratio < ratio < high_ratio:
                     # potential_ts_bonds.append((a1, a2))
                     # print(f'{a1}-{a2} is {ratio:.2f} bond lengths')
 
                     potential_ts_bonds.append(
-                        Choice(name=f"{i1:3.0f} - {i2:3.0f}  |  {pt[atomnos[i1]]}-{pt[atomnos[i2]]} bond, {dist:.3f} Å, {ratio:.2f}x sum of cov. radii", value=f"{i1} {i2} {dist:.2f}")
+                        Choice(name=f"{i1:3.0f} - {i2:3.0f}  |  {atoms[i1]}-{atoms[i2]} bond, {dist:.3f} Å, {ratio:.2f}x sum of cov. radii", value=f"{i1} {i2} {dist:.2f}")
                     )
 
     return potential_ts_bonds
@@ -436,8 +440,8 @@ def inquire_constraints(xyzname=None):
 
     if xyzname is not None:
         mol = read_xyz(xyzname)
-        graph = graphize(mol.atomcoords[0], mol.atomnos)
-        suggested_constraints = get_potential_ts_bonds(mol.atomcoords[0], mol.atomnos, graph)
+        graph = graphize(mol.atoms, mol.coords[0])
+        suggested_constraints = get_potential_ts_bonds(mol.atoms, mol.coords[0], graph)
 
         if suggested_constraints:
 
@@ -509,6 +513,73 @@ def inquire_constraints(xyzname=None):
         options.constr_block += "  {{ {0} {1} C }}\n".format(c_type, c_string)
         
     options.constr_block += "  end\nend"
+
+def inquire_neb_block():
+
+    neb_kw = inquirer.select(
+        message='What type of NEB would you like to run?',
+        choices=(
+            Choice(name='NEB', value='NEB'),
+            Choice(name='NEB-CI', value='NEB-CI'),
+            Choice(name='NEB-TS', value='NEB-TS'),
+            Choice(name='ZOOM-NEB', value='ZOOM-NEB'),
+            Choice(name='ZOOM-NEB-CI', value='ZOOM-NEB-CI'),
+            Choice(name='ZOOM-NEB-TS', value='ZOOM-NEB-TS'),
+        ),
+        default='ZOOM-NEB-TS',
+    ).execute()
+
+    options.additional_kw_set.add(neb_kw)
+
+    if 'TS' in neb_kw:
+        options.freq = True
+
+    n_images = inquirer.text(
+        message="Number of images?",
+        default="8",
+        validator=lambda inp: inp.isdigit(),
+    ).execute()
+
+    product_name = inquirer.filepath(
+        message="Select a structure file for final product:",
+        default="./" if os.name == "posix" else "C:\\",
+        validate=PathValidator(is_file=True, message="Input is not a file"),
+        only_files=True,
+    ).execute()
+
+    s = f'%neb\n  Product "{product_name}"\n  NImages {n_images}\n'
+
+    if inquirer.confirm(
+            message='Would you like to provide a transition state guess?',
+            default=True,
+        ).execute():
+
+        ts_guess_name = inquirer.filepath(
+            message="Select a structure file to be used as a TS guess:",
+            default="./" if os.name == "posix" else "C:\\",
+            validate=PathValidator(is_file=True, message="Input is not a file"),
+            only_files=True,
+        ).execute()
+
+        s += f'  TS "{ts_guess_name}"\n'
+
+    if inquirer.confirm(
+            message='Would you like to pre-optimize the endpoints?',
+            default=True,
+        ).execute():
+    
+        s += "  PreOpt true\n"
+
+    if inquirer.confirm(
+            message='Would you like to have free ends?',
+            default=False,
+        ).execute():
+        s += f"  Free_End true\n  Free_End_Type Full\n"
+    
+    s += "end\n"
+
+    return s
+    
 
 def get_prev_popt_constr_ids(rootname):
     '''
@@ -808,17 +879,16 @@ if __name__ == "__main__":
     parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
     parser.add_argument("--solvent", help="Set solvent to the specified one.", action="store", required=False)
     parser.add_argument("--sp", help="Set input type to SP.", action="store_true", required=False)
-    parser.add_argument("--fastsp", help="Set input type to fast SP.", action="store_true", required=False)
     parser.add_argument("--ts", help="Set input type to TS.", action="store_true", required=False)
-    parser.add_argument("--hh", help="Specify the use of a hybrid hessian.", action="store_true", required=False)
     parser.add_argument("--optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
     parser.add_argument("--popt",help="Set input type to partial optimization.", action="store_true", required=False)
     parser.add_argument("--scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
-    parser.add_argument("--nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
-    parser.add_argument("--tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
-    parser.add_argument("--compound", help="Set input type to a compound method.", action="store_true", required=False)
-    parser.add_argument("--irc", help="Set input type to IRC.", action="store_true", required=False)
+    parser.add_argument("--neb", help="Double-ended TS search via NEB(-TS).", action="store_true", required=False)
     parser.add_argument("--goat", help="Conformational search via GOAT.", action="store_true", required=False)
+    parser.add_argument("--compound", help="Set input type to a compound method.", action="store_true", required=False)
+    parser.add_argument("--tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
+    parser.add_argument("--irc", help="Set input type to IRC.", action="store_true", required=False)
+    parser.add_argument("--nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
     parser.add_argument("--freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
 
     parser.add_argument("--priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
@@ -834,12 +904,15 @@ if __name__ == "__main__":
             args.inputfiles.remove(filename)
             print(f"--> Ignoring {filename} as it appears to be a trajectory file.")
 
+    if not args.inputfiles:
+        print('--> No input structure files specified. Exiting.')
+        sys.exit()
+
     print(f'--> Specified {len(args.inputfiles)} input structure(s).')
 
     xyzname = args.inputfiles[0] if len(args.inputfiles) else None
 
     if not any((args.sp,
-                args.fastsp,
                 args.ts,
                 args.optf,
                 args.popt,
@@ -875,25 +948,6 @@ if __name__ == "__main__":
         options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
 
         inquire_ts_mode_following()
-
-    if args.hh:
-    
-        hh_ids = input("Hybrid Hessian: provide indices involved in TS: ")
-
-        if hh_ids == "":
-
-            popt_ids = get_prev_popt_constr_ids(args.inputfiles[0][:-4])
-            
-            if popt_ids:
-                if inquirer.confirm(f"Would you like to use indices from the previous popt? [{popt_ids}]", default=True):
-                    hh_ids = popt_ids
-
-                else:
-                    print('Please specify hybrid hessian-excluded indices.')
-                    sys.exit()
-            else:
-                print('Please specify hybrid hessian-excluded indices.')
-                sys.exit()
 
     if args.optf:
         options.opt = "Opt"
@@ -1039,13 +1093,12 @@ if __name__ == "__main__":
                 ).execute():
             inquire_constraints(xyzname=xyzname)
 
-    # if args.neb:
-        # inquire_level()
-        # options.opt = "OptTS"
-        # options.mem = 8
-        # options.freq = True
-        # options.additional_kw_set |= {"TightOpt", "LARGEPRINT", "Defgrid3"}
-        # options.extra_block += "%scf\n  MaxIter 250\nend\n\n"
+    if args.neb:
+        inquire_level()
+        options.opt = ""
+        options.mem = 8
+        options.additional_kw_set.add("TightOpt")
+        options.extra_block += inquire_neb_block()
 
         # inquire_ts_mode_following()
 
@@ -1169,7 +1222,7 @@ if __name__ == "__main__":
         # in .xyz files that may stump ORCA
         mol = read_xyz(rootname+".xyz")
         with open(f"{rootname}.xyz", "w") as f:
-            write_xyz(mol.atomcoords[-1], mol.atomnos, f)
+            write_xyz(mol.atoms, mol.coords[-1], f)
 
     table += '----------------------------------------------------------------------------------\n'
     table += f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n\n'

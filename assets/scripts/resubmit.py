@@ -6,6 +6,7 @@ from subprocess import getoutput
 look_for = "ORCA TERMINATED NORMALLY"
 completed, incomplete = [], []
 
+assert len(sys.argv) > 1, "Please provide at least one file as argument."
 
 for name in sys.argv[1:]:
 
