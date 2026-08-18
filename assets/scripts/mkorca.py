@@ -8,7 +8,7 @@ from subprocess import getoutput
 
 import numpy as np
 from firecode.algebra import point_angle
-from firecode.pt import pt
+from firecode.solvents import epsilon_dict
 from firecode.utils import read_xyz, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
@@ -44,9 +44,10 @@ class Options:
     compound_job_extra_variables = dict()
     hh = False # hybrid hessian
 
-    additional_kw_set = set()
+    additional_kw_set = {"RIJCOSX",}
     constr_block = ""
     extra_block = ""
+    extra_block_post_xyz = ""
     
     @property
     def additional_kw_string(self):
@@ -62,6 +63,7 @@ options = Options()
 # epsilon value from https://people.chem.umass.edu/xray/solvent.html
 epsilon_dict = {
     "acetonitrile" : 37.5,
+    "mecn" : 37.5,
     "benzene" : 2.3,
     "chloroform" : 4.81,
     "dichloromethane" : 9.04,
@@ -73,9 +75,10 @@ epsilon_dict = {
     "tetrahydrofuran" : 7.58,
     "dmf" : 36.71,
     "dmso" : 47.2,
-    "ethyl acetate" : 6.02,
-    "ethyl ethanoate" : 6.02,
+    "ethylacetate" : 6.02,
+    "ethylethanoate" : 6.02,
     "phcf3" : 9.18,
+    "trifluorotoluene" : 9.18,
     "toluene" : 2.38,
     "methanol" : 32.7,
     "meoh" : 32.7,
@@ -112,27 +115,31 @@ def inquirer_set_options(args):
     '''
     print()
 
+    choices=(
+        Choice(value='compound', name='compound - Choose a compound method routine.'),
+        Choice(value='sp',       name='sp       - High-level DFT single-point energy calculation.'),
+        Choice(value='optf',     name='opt(f)   - Geom. optimization (+ frequency calculation).'),
+        Choice(value='popt',     name='popt     - Partial optimization (specify constraints).'),
+        Choice(value='ts',       name='ts       - Saddle optimization + frequency calculation.'),
+        Choice(value='neb',      name='neb      - Double-ended TS search via NEB(-TS).'),
+        Choice(value='goat',     name='goat     - Conformational search via GOAT.'),
+        Choice(value='scan',     name='scan     - Perform a distance/angle/dihedral scan.'),
+        Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
+        Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
+        Choice(value='epr',      name='epr      - Single-point EPR tensors calculation.'),
+        Choice(value='irc',      name='irc      - Intrinsic reaction coordinate calculation.'),
+        Choice(value='freqtemp', name='freqtemp - Recalculate vibrational corrections at a new temperature.'),
+    )
+
     runtype = inquirer.select(
         message="Which kind of input file would you like to generate?",
-        choices=(
-            Choice(value='compound', name='compound - Choose a compound method routine.'),
-            Choice(value='sp',       name='sp       - High-level DFT single-point energy calculation.'),
-            Choice(value='optf',     name='opt(f)   - Geom. optimization (+ frequency calculation).'),
-            Choice(value='popt',     name='popt     - Partial optimization (specify constraints).'),
-            Choice(value='ts',       name='ts       - Saddle optimization + frequency calculation.'),
-            Choice(value='neb',      name='neb      - Double-ended TS search via NEB(-TS).'),
-            Choice(value='goat',     name='goat     - Conformational search via GOAT.'),
-            Choice(value='scan',     name='scan     - Perform a distance/angle/dihedral scan.'),
-            Choice(value='tddft',    name='tddft    - TD-DFT calculation.'),
-            Choice(value='nmr',      name='nmr      - Single-point NMR tensors calculation.'),
-            Choice(value='irc',      name='irc      - Intrinsic reaction coordinate calculation.'),
-            Choice(value='freqtemp', name='freqtemp - Recalculate vibrational corrections at a new temperature.'),
-        ),
+        choices=choices,
         default='compound',
     ).execute()
 
     # modify the option on the args namespace
-    setattr(args, runtype, True)
+    for choice in choices:
+        setattr(args, choice.value, choice.value == runtype)
 
     set_solvent(args)
 
@@ -151,24 +158,37 @@ def set_solvent(args):
                 Choice(value=None, name='vacuum'),
                 Choice(value='CPCM', name='CPCM'),
                 Choice(value='SMD', name='SMD'),
+                Choice(value="DRACO-CPCM", name="DRACO-CPCM"),
+                Choice(value="DRACO-SMD", name="DRACO-SMD"),
             ),
             default='SMD' if args.sp else 'CPCM',
         ).execute()
+
+    if options.solvent_model is not None and "DRACO" in options.solvent_model:
+        options.solvent_model = options.solvent_model.removeprefix("DRACO-")
+        options.additional_kw_set.add("DRACO")
+        available_solvents = ("acetonitrile", "mecn", "dmso", "methanol")
+        options.solvent = "acetonitrile"
+
+    else:
+        available_solvents = epsilon_dict.keys()
 
     if not (args.freqtemp or args.compound) and (options.solvent_model is not None):
         # set or confirm solvent
         options.solvent = inquirer.fuzzy(
             message=f"Current solvent is {options.solvent}. Press enter to confirm or type another solvent:",
-            choices=epsilon_dict.keys(),
+            choices=available_solvents,
             default=options.solvent,
         ).execute()
 
         if options.solvent in ("vacuum", "None"):
             options.solvent = None
 
-def set_comp_job_variables(cmpname):
+def set_comp_job_variables(cmpname: str, vars_to_set: list[str] | None = None) -> None:
     """
-    Return the extra variables string for compound jobs.
+    Modify variables for compound jobs.
+
+    vars_to_set: only change these variables.
     """
 
     lines = getoutput(f'grep "variable .* = \".*\";" {cmpname}').split("\n")
@@ -177,32 +197,44 @@ def set_comp_job_variables(cmpname):
 
     for varname, default in zip(varnames, defaults):
 
-        if 'method' in varname:
-            if args.manual:
-                user_value = manual_inquire_level(pre_message=f'{varname}: ')
-            else:
-                user_value = default
+        if (vars_to_set is None) or (varname in vars_to_set):
+            match varname:
+                case 'method':
+                    if args.manual:
+                        user_value = manual_inquire_level(pre_message=f'{varname}: ')
+                    else:
+                        user_value = default
 
-        elif 'solvent' in varname:
+                case 'solvent':
 
-            set_auto_solvent()
+                    set_auto_solvent()
 
-            user_value = inquirer.fuzzy(
-                message=f'Specify solvent for compound job variable "{varname}":',
-                choices=epsilon_dict.keys(),
-                default=options.solvent,
-            ).execute()
+                    user_value = inquirer.fuzzy(
+                        message=f'Specify solvent for compound job variable "{varname}":',
+                        choices=epsilon_dict.keys(),
+                        default=options.solvent,
+                    ).execute()
 
-        else:
-            if args.manual:
-                user_value = inquirer.text(
-                    message=f'Specify value for compound job variable "{varname}" (default: {default}):',
-                    default=default,
-                ).execute()
-            else:
-                user_value = default
+                case "convergence":
 
-        options.compound_job_extra_variables[varname] = user_value
+                    if args.manual:
+                        user_value = "SlowConv" if inquirer.confirm(
+                            message=f'Non-singlet: do you want to use careful SCF convergence (SlowConv)?:',
+                            default=False,
+                        ).execute() else ""
+                    else:
+                        user_value = ""
+
+                case _:
+                    if args.manual:
+                        user_value = inquirer.text(
+                            message=f'Specify value for compound job variable "{varname}" (default: {default}):',
+                            default=default,
+                        ).execute()
+                    else:
+                        user_value = default
+
+            options.compound_job_extra_variables[varname] = user_value
 
 def get_comp_script_inp(rootname):
         
@@ -285,6 +317,8 @@ end
 {options.extra_block.replace('$ROOTNAME', rootname)}
 
 * xyzfile {options.charge} {options.mult} {rootname}.xyz
+
+{options.extra_block_post_xyz}
 
 '''
 
@@ -514,7 +548,7 @@ def inquire_constraints(xyzname=None):
         
     options.constr_block += "  end\nend"
 
-def inquire_neb_block():
+def inquire_neb_block(xyzname):
 
     neb_kw = inquirer.select(
         message='What type of NEB would you like to run?',
@@ -534,48 +568,81 @@ def inquire_neb_block():
     if 'TS' in neb_kw:
         options.freq = True
 
-    n_images = inquirer.text(
-        message="Number of images?",
-        default="8",
-        validator=lambda inp: inp.isdigit(),
-    ).execute()
+    mol = read_xyz(xyzname)
+    s = "%neb\n"
 
-    product_name = inquirer.filepath(
-        message="Select a structure file for final product:",
-        default="./" if os.name == "posix" else "C:\\",
-        validate=PathValidator(is_file=True, message="Input is not a file"),
-        only_files=True,
-    ).execute()
+    match len(mol.coords):
 
-    s = f'%neb\n  Product "{product_name}"\n  NImages {n_images}\n'
+        case 1:
+            n_images = inquirer.text(
+                message="Number of total images (including endpoints)?",
+                default="7",
+                validate=lambda inp: inp.isdigit(),
+            ).execute()
 
-    if inquirer.confirm(
-            message='Would you like to provide a transition state guess?',
-            default=True,
-        ).execute():
+            if inquirer.confirm(
+                    message='Would you like to pre-optimize the endpoints?',
+                    default=True,
+                ).execute():
+            
+                s += "  PreOpt true\n"
 
-        ts_guess_name = inquirer.filepath(
-            message="Select a structure file to be used as a TS guess:",
-            default="./" if os.name == "posix" else "C:\\",
-            validate=PathValidator(is_file=True, message="Input is not a file"),
-            only_files=True,
-        ).execute()
+            product_name = inquirer.filepath(
+                    message="Select a structure file for final product:",
+                    default="./" if os.name == "posix" else "C:\\",
+                    validate=PathValidator(is_file=True, message="Input is not a file"),
+                    only_files=True,
+                ).execute()
 
-        s += f'  TS "{ts_guess_name}"\n'
+            s += f'  Product "{product_name}"\n'
 
-    if inquirer.confirm(
-            message='Would you like to pre-optimize the endpoints?',
-            default=True,
-        ).execute():
-    
-        s += "  PreOpt true\n"
+            if inquirer.confirm(
+                    message='Would you like to provide a transition state guess?',
+                    default=True,
+                ).execute():
+
+                ts_guess_name = inquirer.filepath(
+                    message="Select a structure file to be used as a TS guess:",
+                    default="./" if os.name == "posix" else "C:\\",
+                    validate=PathValidator(is_file=True, message="Input is not a file"),
+                    only_files=True,
+                ).execute()
+
+                s += f'  TS "{ts_guess_name}"\n'
+
+        case (2, 3):
+            raise NotImplementedError()
+        
+        case _:
+            print(f"--> File {xyzname} contains more than three structures ({len(mol.coords)}). Using it as starting MEP.")
+
+            allxyzname = xyzname.rstrip(".xyz") + ".allxyz"
+            
+            with open(allxyzname, "w") as f:
+                for c, coord in enumerate(mol.coords):
+                    write_xyz(mol.atoms, coord, f, title=f"ORCA-job Path Image {c}")
+
+                    if c + 1 < len(mol.coords):
+                        f.write(">\n")
+
+            print(f"--> Converted {xyzname} to {allxyzname}")
+
+            s += f'  Restart_ALLXYZFile "{allxyzname}"\n'
 
     if inquirer.confirm(
             message='Would you like to have free ends?',
             default=False,
         ).execute():
         s += f"  Free_End true\n  Free_End_Type Full\n"
+
+    elif len(mol.coords) == 1:
+        # correct active images if endpoints are fixed
+        # and we are specifying the number of images
+        n_images = str(int(n_images) - 2)
     
+    if len(mol.coords) == 1:
+        s += f'  NImages {n_images}\n'
+
     s += "end\n"
 
     return s
@@ -728,8 +795,13 @@ def manual_inquire_level(pre_message='') -> str:
 
     if "-3c" not in theory_level:
 
-        basis_set = inquirer.fuzzy(
-            message=f"{pre_message}Which basis set would you like to use?",
+        if args.epr:
+            choices=(
+                'pcH-2',
+                'aug-pcH-2',
+            )
+
+        else:
             choices=(
                 'def2-SVP',
                 'def2-SV(P)',
@@ -738,7 +810,11 @@ def manual_inquire_level(pre_message='') -> str:
                 'def2-TZVPPD',
                 'def2-QZVPP',
                 'def2-QZVPPD',
-            ),
+            )
+
+        basis_set = inquirer.fuzzy(
+            message=f"{pre_message}Which basis set would you like to use?",
+            choices=choices,
         ).execute()
 
     else:
@@ -748,15 +824,13 @@ def manual_inquire_level(pre_message='') -> str:
 
 def inquire_level(default='R2SCAN-3c'):
 
-    if args.manual:
+    if args.manual or args.epr:
         options.level = manual_inquire_level()
 
     else:
         options.level = inquirer.select(
                 message="Which level of theory would you like to use?",
                 choices=(
-                    # Choice(value='wB97M-D3BJ RIJCOSX def2-TZVPPD',
-                    #     name='* Rowan\'s benchmark - ωB97M(BJ)/def2-TZVPPD'),
 
                     Choice(value='B3LYP D3BJ def2-TZVPP',
                         name='B3LYP-D3(BJ)/def2-TZVPP  - GGA             ★★★☆☆'),
@@ -782,7 +856,7 @@ def inquire_level(default='R2SCAN-3c'):
                     Choice(value='wB97M(2) def2-TZVPP',       
                         name='ωB97M(2)/def2-TZVPP      - Double Hybrid   ★★★★★ - (will copy .gbw from parent folder if not in current)'),
 
-                    Choice(value='DLPNO-CCSD(T) def2-TZVPP def2-TZVPP/C RIJCOSX',  
+                    Choice(value='DLPNO-CCSD(T) def2-TZVPP def2-TZVPP/C',  
                         name='DLPNO-CCSD(T)/def2-TZVPP - Coupled Cluster ★★★★★'),
 
                 ),
@@ -859,7 +933,8 @@ def manual_electronic_configuration():
 
     choices = [
         Choice(value=(1, False), name='S0 - Singlet ground state'),
-        Choice(value=(3, False), name='T1 - Triplet state'),
+        Choice(value=(2, False), name='D - Doublet state'),
+        Choice(value=(3, False), name='T - Triplet state'),
         Choice(value=(1, True),  name='S1 - Singlet excited state'),
     ]
 
@@ -867,7 +942,7 @@ def manual_electronic_configuration():
             message=f'Specify desired electronic configuration of {rootname}:',
             choices=choices,
             # validate=lambda inp: inp.isdigit() and int(inp) > 0,
-            default=(1, False),
+            default=(1, False) if multiplicity_check(rootname, options.charge) else (2, False),
         ).execute()
 
     if add_tddft_block and not "%tddft" in options.extra_block:
@@ -876,56 +951,33 @@ def manual_electronic_configuration():
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
-    parser.add_argument("--solvent", help="Set solvent to the specified one.", action="store", required=False)
-    parser.add_argument("--sp", help="Set input type to SP.", action="store_true", required=False)
-    parser.add_argument("--ts", help="Set input type to TS.", action="store_true", required=False)
-    parser.add_argument("--optf", help="Set input type to optimization + frequency calculation.", action="store_true", required=False)
-    parser.add_argument("--popt",help="Set input type to partial optimization.", action="store_true", required=False)
-    parser.add_argument("--scan", help="Perform a distance/angle/dihedral scan.", action="store_true", required=False)
-    parser.add_argument("--neb", help="Double-ended TS search via NEB(-TS).", action="store_true", required=False)
-    parser.add_argument("--goat", help="Conformational search via GOAT.", action="store_true", required=False)
-    parser.add_argument("--compound", help="Set input type to a compound method.", action="store_true", required=False)
-    parser.add_argument("--tddft", help="Run a TDDFT optimization.", action="store_true", required=False)
-    parser.add_argument("--irc", help="Set input type to IRC.", action="store_true", required=False)
-    parser.add_argument("--nmr", help="Set input type to NMR (single-point).", action="store_true", required=False)
-    parser.add_argument("--freqtemp", help="Recalculate vibrational corrections at a new temperature.", action="store_true", required=False)
 
-    parser.add_argument("--priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
-    parser.add_argument("--manual", help="Get more granular control.", action="store_true", required=False)
+    parser.add_argument("inputfiles", help="Input filenames, in .xyz format.", action='store', nargs='*', default=None)
+    parser.add_argument("-p", "--priority", help="Run jobs with priority (and estimate cost).", action="store_true", required=False)
+    parser.add_argument("-m", "--manual", help="Get more granular control.", action="store_true", required=False)
     args = parser.parse_args()
 
     for filename in args.inputfiles:
         if not filename.endswith(".xyz"):
             args.inputfiles.remove(filename)
-            print(f"--> {filename} is not a structure file.")
+            print(f"--> Skipping {filename}: not a structure file.")
 
         elif filename.endswith("_trj.xyz"):
             args.inputfiles.remove(filename)
-            print(f"--> Ignoring {filename} as it appears to be a trajectory file.")
+            print(f"--> Ignoring {filename}, as it appears to be a trajectory file.")
 
     if not args.inputfiles:
         print('--> No input structure files specified. Exiting.')
         sys.exit()
 
-    print(f'--> Specified {len(args.inputfiles)} input structure(s).')
+    print(f'\n--> Specified {len(args.inputfiles)} input structure(s).')
 
     xyzname = args.inputfiles[0] if len(args.inputfiles) else None
 
-    if not any((args.sp,
-                args.ts,
-                args.optf,
-                args.popt,
-                args.scan,
-                args.nmr,
-                args.tddft,
-                args.compound,
-                args.irc,
-                args.goat)):
-        inquirer_set_options(args)
+    inquirer_set_options(args)
 
-    if args.solvent:
-        print(f"--> Setting solvent to {options.solvent}")
+    if options.solvent:
+        print(f"--> Setting solvent to {options.solvent_model}({options.solvent})")
 
     if args.sp or args.optf:
 
@@ -998,12 +1050,14 @@ if __name__ == "__main__":
         options.extra_block += inquirer.select(
             message="Which kind of calculation would you like to run?",
             choices=[
-                Choice(value=f"%tddft\n  NRoots 10\nend\n", name="Compute the first 10 excitations from the ground state"),
+                Choice(value=f"%tddft\n  NRoots 10\n  DoNTO True\nend\n", name="Compute the first 10 excitations from the ground state"),
                 Choice(value=f"%tddft\n  IRoot 1\nend\n", name="Optimize to the first excited state"),
             ]
         ).execute()
 
         options.additional_kw_set.add("Defgrid3")
+        # options.level should be made "" and we should use the "%method\n  functional {level}\nend" block
+        # also we should separate basis set and functional
 
     if args.nmr:
         options.freq = False
@@ -1015,6 +1069,25 @@ if __name__ == "__main__":
             options.level = 'PBE0 6-311+G(2d,p)'
 
         options.additional_kw_set |= {"NMR", "Defgrid3"}
+
+    if args.epr:
+
+        options.freq = False
+        options.opt = ""   
+
+        inquire_level()
+
+        options.additional_kw_set.add("Defgrid3")
+
+        print(f"--> EPR: Will compute HFCCs with simple a_iso and a_dip terms for all H/N/P atoms. Organic radicals only!")
+
+        # Build EPR block and add it
+        epr_block = "%eprnmr\n"
+        for nucleus in ("H", "N", "P"):
+            epr_block += "  Nuclei = all {0} {{ aiso, adip }}\n".format(nucleus)
+        epr_block += "end\n"
+
+        options.extra_block_post_xyz += epr_block
 
     if args.compound:
 
@@ -1083,7 +1156,7 @@ if __name__ == "__main__":
             ).execute()
 
         options.opt = ""
-        options.additional_kw.add("GOAT")
+        options.additional_kw_set.add("GOAT")
         options.solvent_model = 'ALPB'
         options.extra_block += get_goat_block()
 
@@ -1098,7 +1171,7 @@ if __name__ == "__main__":
         options.opt = ""
         options.mem = 8
         options.additional_kw_set.add("TightOpt")
-        options.extra_block += inquire_neb_block()
+        options.extra_block += inquire_neb_block(xyzname=xyzname)
 
         # inquire_ts_mode_following()
 
@@ -1203,6 +1276,9 @@ if __name__ == "__main__":
                     default="2",
                 ).execute()
 
+        if args.compound and options.mult != 1:
+            set_comp_job_variables(options.compound_job_scriptname, vars_to_set=["convergence"])
+
         table += f'{str(f+1):>3}  {filename:30s} {procs:2}     {options.mem*procs:d}      {options.charge:>2}       {options.mult}       {cost:.2f} $\n'
 
         if args.compound:
@@ -1217,12 +1293,12 @@ if __name__ == "__main__":
         with open(f'{rootname}.inp', 'w') as f:
             f.write(s)
 
-        # clean up multi-structure files into the last
-        # structure only and remove long comment lines
+        # remove long comment lines
         # in .xyz files that may stump ORCA
         mol = read_xyz(rootname+".xyz")
         with open(f"{rootname}.xyz", "w") as f:
-            write_xyz(mol.atoms, mol.coords[-1], f)
+            for coord in mol.coords:
+                write_xyz(mol.atoms, coord, f)
 
     table += '----------------------------------------------------------------------------------\n'
     table += f'Maximum estimated cost (24 h runtime, {int(cum_cpu)} CPUs, {int(cum_mem)} GB MEM): {cum_cost:.2f} $\n\n'

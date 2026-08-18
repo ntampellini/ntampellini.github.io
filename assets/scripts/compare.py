@@ -1,51 +1,53 @@
 import os as operating_system
-from getpass import getuser
 import sys
+from getpass import getuser
+from pathlib import Path
 from subprocess import getoutput
+from typing import Callable
 
 import numpy as np
+from firecode.context_managers import suppress_stdout_stderr
 from firecode.pt import pt
 from firecode.units import EH_TO_KCAL
-from firecode.utils import read_xyz, suppress_stdout_stderr, write_xyz
+from firecode.utils import read_xyz, read_xyz_energies, write_xyz
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import PathValidator
 from prism_pruner.algebra import get_inertia_moments
-from prism_pruner.graph_manipulations import graphize
 from prism_pruner.rmsd import rmsd_and_max
+from prism_pruner.utils import align_structures, time_to_string
 from rich.traceback import install
+from typing import Iterable
 
-from utils import read_xyz_energies
+from utils import tcolors
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
 username = getuser()
-scratchdir = f'/nfs/roberts/scratch/pi_sjm76/{username}'
+scratchdir = f'/home/{username}/orcd/scratch/{username}/'
+align_structures_bool = True
 
 ####################################################################################
-
-class tcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[38;2;65;165;165m'
-    WARNING = '\033[93m'
-    FAIL = '\033[38;2;232;111;136m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
 K_BOLTZMANN = 1.380649E-23 # J/K
 H_PLANCK = 6.62607015E-34 # J*s
 R = 0.001985877534 # kcal/(mol*K)
 
-def get_eyring_k(activation_energy, T=298.15):
+def get_eyring_k(activation_energy: float, T: float = 298.15) -> float:
     '''
     Returns a rate constant in s^-1 given an
     activation energy in kcal/mol and a temperature.
     
     '''
     return K_BOLTZMANN * T / H_PLANCK * np.exp(-activation_energy/(R*T))
+
+def _format_string(ndec=8) -> Callable[[str, str], str]:
+    """Provides prettytable format functions."""
+    def func(field, value):
+        if value is None:
+            return "None"
+        return f"{value:.{ndec}f}"
+    return func
 
 class Options:
     def __init__(self):
@@ -54,6 +56,7 @@ class Options:
 class Job:
     def __init__(self, filename, energy_mode='EE', freqdir="."):
         self.name = filename
+        self.basename = Path(filename).resolve().stem
 
         assert energy_mode in ('EE', 'H', 'G')
 
@@ -67,28 +70,48 @@ class Job:
         self.freqdir = freqdir
         if self.freqdir == ".":
             self.freqfile = self.name
+
+        elif self.freqdir == "..":
+            p = Path(self.name).absolute()
+            self.freqfile = p.parent.parent / p.name
+
         else:
             self.freqfile = operating_system.path.join(self.freqdir, operating_system.path.basename(self.name))
+
+    def __repr__(self) -> str:
+        return f"Job({self.name})"
 
     @property
     def temperature(self):
         if self.name.endswith(".out"):
-            return float(getoutput(f"grep \"Temperature\" {self.name}").split()[2])
+            return float(getoutput(f"grep \"Temperature\" {self.freqfile}").split()[2])
         return NotImplementedError
 
     @property
     def natoms(self):
+
+        if hasattr(self, "last_coords"):
+            return len(self.last_coords)
+
         try:
-            return int(getoutput(f"head {self.name[:-4]}.xyz -n 1").split()[0])
+            if self.name.endswith(".out"):
+                return int(getoutput(f"grep \"Number of atoms\" {self.name}").split()[4])
+            # .xyz
+            return int(getoutput(f"head {self.basename}.xyz -n 1").split()[0])
         except:
             return None
         
     @property
     def charge(self):
         try:
-            return int(getoutput(f"grep xyzfile {self.name[:-4]}.inp").split()[2])
-        except:
-            return None
+            # read the associated ORCA input file
+            return int(getoutput(f"grep xyzfile {self.basename}.inp").split()[2])
+        except ValueError:
+            try:
+                # fallback to the outfile
+                return int(getoutput(f"grep -m 1 \"Total Charge\" {self.basename}.out").split()[4])
+            except Exception:
+                return None
 
     @property
     def completed(self):
@@ -99,11 +122,11 @@ class Job:
         if not self.name.endswith('.out'):
             return "XYZ FILE"
         if self.completed:
-            return tcolors.OKGREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC
+            return tcolors.GREEN + tcolors.BOLD + "COMPLETED" + tcolors.ENDC
         if self.name in running_names:
-            return tcolors.WARNING + "RUNNING" + tcolors.ENDC
+            return tcolors.YELLOW + "RUNNING" + tcolors.ENDC
         else:
-            return tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC
+            return tcolors.RED + "INCOMPLETE" + tcolors.ENDC
 
     def __gt__(self, other):
         return getattr(self, self.compare_via) > getattr(other, other.compare_via)
@@ -118,22 +141,19 @@ class Job:
         return self.last_coords
         
     def read_coords(self):
-        if self.name.endswith(".out"):
-            self.last_coords = read_xyz(f'{self.name[:-4]}.xyz').coords[-1]
-
-        elif self.name.endswith(".xyz"):
-            raise NotImplementedError
+        mol = read_xyz(f'{self.basename}.xyz')
+        self.last_coords = mol.coords[-1]
+        self.last_atoms = mol.atoms
         
     def get_freq_str(self):
-        n_atoms = int(getoutput(f'head {self.name[:-4]}.xyz -n 1'))
-        n_freqs = 3 * n_atoms
-        is_ts = getoutput(f'grep -i \"\\!.*optts\" {self.name[:-4]}.out') != ""
+        n_freqs = 3 * self.natoms
+        is_ts = (getoutput(f'grep -i \"\\!.*optts\" {self.freqfile}') != "") or self.name.lower().startswith("ts")
 
         lines = getoutput(f'grep \" \\+[0-9]\\+: \\+-*[0-9]\\+\\.[0-9]\\+ cm\\*\\*-1\" {self.freqfile}').split('\n')
         freqs = [float(line.split()[1]) for line in lines]
 
         if len(freqs) < n_freqs:
-            color = tcolors.FAIL
+            color = tcolors.RED
             return f"{color}(no freqs found){tcolors.ENDC}"
         
         # if more than one set, only keep the last
@@ -143,9 +163,9 @@ class Job:
         neg_freqs = len([f for f in freqs if f < 0])
         
         if is_ts:
-            color = tcolors.OKGREEN if neg_freqs == 1 else tcolors.WARNING
+            color = tcolors.GREEN if neg_freqs == 1 else tcolors.YELLOW
         else:
-            color = tcolors.OKGREEN if neg_freqs == 0 else tcolors.WARNING
+            color = tcolors.GREEN if neg_freqs == 0 else tcolors.YELLOW
 
         comment = 'GS' if neg_freqs == 0 else ('TS' if neg_freqs == 1 else '')
         s = "s" if n_sets > 1 else ""
@@ -181,6 +201,12 @@ class Job:
         self.hcorr_kbT = hcorr + kbT
         self.enthalpy = self.electronic_energy + hcorr + kbT
 
+    @property
+    def atoms(self):
+        if hasattr(self, "last_atoms"):
+            return self.last_atoms
+        
+        return read_xyz(f'{self.basename}.xyz').atoms
 
 def assert_homogeneous_temps(jobs) -> float:
     """Ensure Thermochemistry was carried out at the same temperature for each job.
@@ -211,6 +237,24 @@ def assess_consistent_natoms_charge(jobs) -> float:
 
     return True
 
+def print_cumpop_analysis(jobs: list[Job], boltzmann_pops: Iterable[float]) -> None:
+    """Print the cumulative relative distribution of different folders."""
+    foldernames = [Path(job.name).absolute().parent for job in jobs]
+
+    if len(foldernames) == 1:
+        return
+
+    cum_pop_dict = {foldername : {"count" : 0, "cumpop": 0.0} for foldername in set(foldernames)}
+
+    for fname, pop in zip(foldernames, boltzmann_pops):
+        cum_pop_dict[fname]["count"] += 1
+        cum_pop_dict[fname]["cumpop"] += pop
+
+    print("\nCumulative populations by folder:")
+    print("-"*70)
+    for fname, data in cum_pop_dict.items():
+        print(f"{str(fname):60}    ({data["count"]:2})    {data["cumpop"]*100:.1f} %")
+
 def compare(argv):
     '''
     '''
@@ -227,17 +271,18 @@ def compare(argv):
         quit()
 
     else:
-        print(f"--> Specified {len(argv)} outfiles.")
+        print(f"--> Specified {len(argv)-1} outfiles.")
 
     ### Multiple option selector
     options = Options()
     
     # check if we have G(corr) values to grep before the user has a chance to choose free energy
     avail_gcorrs = []
-    if "GIBBS" in getoutput(f'grep GIBBS {argv[1]}'):
+    p = Path(argv[1]).absolute()
+    if "GIBBS" in getoutput(f'grep GIBBS {p}'):
         avail_gcorrs.append(Choice(value=".", name=f'./    This folder   - read free energy from this folder.'))
 
-    if "GIBBS" in getoutput(f'grep GIBBS ../{argv[1]}'):
+    if "GIBBS" in getoutput(f'grep GIBBS {p.parent.parent / p.name}'):
         avail_gcorrs.append(Choice(value="..", name=f'../   Parent folder - read free energy from the parent folder.'))
 
     avail_gcorrs.append(Choice(value=None,    name=f'?     Other folder  - choose another folder to read G(corr) values.'))
@@ -334,6 +379,7 @@ def compare(argv):
 
     energy_mode = "EE"
     freqdir = "."
+    energy_thr = None
 
     ### If we are interested in free energy, set appropriate lookup folder
     if options.g or options.h:
@@ -366,7 +412,7 @@ def compare(argv):
             filter=lambda x: (float(x) if x else None),
         ).execute()
 
-        energy_thr = energy_thr or 1e12
+        energy_thr = energy_thr or np.inf
 
         outfolder = inquirer.filepath(
             message="Where do you want to extract structures?",
@@ -379,6 +425,9 @@ def compare(argv):
             message="Filename to save structures to? (leave blank for same-name multiple files)",
             default="",
         ).execute()
+
+        if outfile_name != "":
+            outfile_name += ".xyz" if not outfile_name.endswith(".xyz") else ""
 
         outname = operating_system.path.join(outfolder, outfile_name)
 
@@ -409,6 +458,7 @@ def compare(argv):
 
     # Start extracting stuff
     jobs, failed_jobs = [], []
+    use_energies = True
     for name in argv[1:]:
         print(f'Reading {name}...', end="\r")
 
@@ -423,13 +473,16 @@ def compare(argv):
             if energies is None:
                 energies = [0.0 for _ in mol.coords]
             else:
-                assert len(mol.coords) == len(energies)
+                if len(mol.coords) != len(energies):
+                    print(f"--> WARNING: {name} - {len(mol.coords)=} != {len(energies)=} - ignoring energies altogether.\n")
+                    energies = [0.0 for _ in mol.coords]
+                    use_energies = False
             
             for i, energy in enumerate(energies):
                 job = Job(name[:-4]+f"_conf{i}", energy_mode=energy_mode)
                 job.electronic_energy = energy
                 job.last_coords = mol.coords[i]
-                job.atoms = mol.atoms
+                job.last_atoms = mol.atoms
                 jobs.append(job)
 
         # parse ORCA output files 
@@ -439,12 +492,12 @@ def compare(argv):
                 job.read_energy(prev_to_last=previous_to_last_energy)
                 jobs.append(job)
 
-            except (IndexError, ValueError) as e:
-                print(e)
+            except (IndexError, ValueError) as err:
+                print(f"--> {name} is not an ORCA file, skipping - ERR: {err}")
                 failed_jobs.append(name)
 
                 if options.raise_errors:
-                    raise e
+                    raise err
 
                 pass
 
@@ -468,6 +521,7 @@ def compare(argv):
         # converged = getoutput(f'grep HURRAY {job.name}') != ''
 
         if options.stereochem:
+
             try:
                 coords = job.get_coords()
                 job.config = get_absolute(coords, thr=60)
@@ -478,7 +532,7 @@ def compare(argv):
         if options.novel:
 
             last_coords = job.get_coords()
-            masses = np.array([pt[a].mass for a in job.atoms])
+            masses = np.array([pt.mass(a) for a in job.atoms])
             for reference in comparison_structs:
                 # moi_dev_vec = get_moi_deviation_vec(last_coords, reference, masses)
                 im1 = get_inertia_moments(reference, masses)
@@ -519,6 +573,11 @@ def compare(argv):
     else:
         jobs = sorted(jobs)
 
+    # remove high energy jobs if we are extracting with a threshold
+    if options.x and energy_thr != np.inf:
+        jobs = [job for job in jobs if (job.get_comparison_energy()-min_e)*EH_TO_KCAL <= energy_thr]
+        print(f"--> Extraction threshold = {energy_thr:.1f} kcal/mol: removing high energy structures.")
+
     from prettytable import PrettyTable
 
     table = PrettyTable()
@@ -527,31 +586,40 @@ def compare(argv):
     for i, job in enumerate(jobs):
         table.add_row([i+1, job.name, job.electronic_energy])
 
+    table.custom_format["Electronic Energy (Eh)"] = _format_string()
+
     if options.g:
 
         if print_all_energies:
             table.add_column('G_corr (Eh)', [job.gcorr for job in jobs])
+            table.custom_format["G_corr (Eh)"] = _format_string()
         else:
             table.del_column('Electronic Energy (Eh)')
 
-        table.add_column('G (Eh)', [job.gcorr+job.electronic_energy for job in jobs])
+        table.add_column("G (Eh)", [job.gcorr+job.electronic_energy for job in jobs])
+        table.custom_format["G (Eh)"] = _format_string()
 
     elif options.h:
 
         if print_all_energies:
             table.add_column('H_corr+kbT (Eh)', [job.hcorr_kbT for job in jobs])
+            table.custom_format["H_corr+kbT (Eh)"] = _format_string()
         else:
             table.del_column('Electronic Energy (Eh)')
 
         table.add_column('H (Eh)', [job.enthalpy for job in jobs])
+        table.custom_format["H (Eh)"] = _format_string()
 
     # correct table header name for .xyz files
-    elif not any('.out' in job.name for job in jobs):
+    elif not any(job.name.endswith(".out") for job in jobs):
         table.del_column('Electronic Energy (Eh)')
         table.add_column('Parsed Energy (Eh)', [job.get_comparison_energy() for job in jobs])
+        table.custom_format["Parsed Energy (Eh)"] = _format_string()
         
     letter = 'G' if options.g else ('H' if options.h else 'E')
-    table.add_column(f'Rel. {letter} (kcal/mol)', [round((job.get_comparison_energy()-min_e)*EH_TO_KCAL, 2) for job in jobs])
+    letter_col_name = f'Rel. {letter} (kcal/mol)'
+    table.add_column(letter_col_name, [(job.get_comparison_energy()-min_e)*EH_TO_KCAL for job in jobs])
+    table.custom_format[letter_col_name] = _format_string(ndec=2)
     table.add_column('Status', [job.status_str(running_names) for job in jobs])
     
     if options.g:
@@ -588,16 +656,46 @@ def compare(argv):
     if failed_jobs:
         field_index = {field: index for index, field in enumerate(table.field_names)}
         for f, fjob in enumerate(failed_jobs, start=len(table.field_names)+1):
-            # table.add_row([f] + [fjob] + [None for _ in table.field_names[:-3]] + [tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC])
+            # table.add_row([f] + [fjob] + [None for _ in table.field_names[:-3]] + [tcolors.RED + "INCOMPLETE" + tcolors.ENDC])
             new_row = [None for _ in table.field_names]
             new_row[field_index["#"]] = f
             new_row[field_index["Filename"]] = fjob
-            new_row[field_index["Status"]] = tcolors.FAIL + "INCOMPLETE" + tcolors.ENDC
+            new_row[field_index["Status"]] = tcolors.RED + "INCOMPLETE" + tcolors.ENDC
             table.add_row(new_row)
+
+    # try to add ORCA runtime
+    if all(job.name.endswith(".out") for job in jobs):
+        runtimes_s: list[float | None] = []
+        for job in jobs + failed_jobs:
+            try:
+                numbers = [float(part) for part in getoutput(
+                        f"grep \"ORCA TERMINATED NORMALLY\" {job.name} -A 1 | tail -1"
+                    ).split() if part.isdigit()]
+
+                factors = (
+                    3600 * 24,# days to seconds
+                    3600, # hours to seconds
+                    60, # minutes to seconds
+                    1, # seconds
+                    1e-3, # msec to seconds
+                )
+                runtime = 0.0
+                for number, factor in zip(numbers, factors):
+                    runtime += number * factor
+
+            except Exception:
+                runtime = None
+
+            runtimes_s.append(runtime)
+
+        table.add_column("ORCA Runtime", [time_to_string(rt, digits=0) if rt is not None else "N/A" for rt in runtimes_s])
 
     print(table.get_string())
 
     if options.g and homogeneous_ens:
+
+        print_cumpop_analysis(jobs, boltzmann_pop)
+
         print(f"\nEnsemble contribution correction to G(obs): ({T} K):\n" +
                 f"  {dG_obs:.3f} kcal/mol\n" +
                 f"  {dG_obs/EH_TO_KCAL:.12f} Eh\n")
@@ -679,30 +777,47 @@ def compare(argv):
 
                 mol = read_xyz(filename)
 
-                job.atoms = mol.atoms
                 job.last_coords = mol.coords[-1]
         
         if options.novel:
             before = len(jobs)
             jobs = [job for job in jobs if job.novelty]
+
+            if not jobs:
+                print(f"No novel structures found relative to comparison structures.")
+                sys.exit(0)
+
             print(f'Considering only novel structures: retaining {len(jobs)}/{before}')
 
         print('Removing similar structures with PRISM Pruner...')
 
-        coords, mask = prune(
-            np.array([job.last_coords for job in jobs]),
-            jobs[0].atoms,
-            rot_corr_rmsd_pruning=True,
-            energies=np.array([job.get_comparison_energy()*EH_TO_KCAL for job in jobs]),
-            max_dE=2.0, # only compare structs <2 kcal apart
-            logfunction=print,
-            )
-        jobs = np.array(jobs, dtype=object)[mask]
+        try:
+            coords, mask = prune(
+                np.array([job.last_coords for job in jobs]),
+                jobs[0].atoms,
+                rot_corr_rmsd_pruning=False,
+                energies=np.array([job.get_comparison_energy()*EH_TO_KCAL for job in jobs]) if use_energies else None,
+                max_dE=1.0, # only compare structs <1 kcal apart
+                logfunction=print,
+                debugfunction=print,
+                )
+            jobs = np.array(jobs, dtype=object)[mask]
+
+        except Exception as e:
+            print(f"Pruning errored out: {e}")
+            print("Proceeding without pruning.")
 
         # in case we discarded the most stable, recompute and save Rel. E.s
         min_e = min([job.get_comparison_energy() for job in jobs])
         for job in jobs:
             job.rel_energy = (job.get_comparison_energy()-min_e)*EH_TO_KCAL
+
+        # align structures if asked to do so
+        if align_structures_bool:
+            aligned_coords = align_structures(np.array([job.last_coords for job in jobs]))
+            for job, lc in zip(jobs, aligned_coords):
+                job.last_coords = lc
+            print(f"---> Aligned structures before export!")
 
         # print to same-name new files if user asked to
         if operating_system.path.basename(outname) == '':

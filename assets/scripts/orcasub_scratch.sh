@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=16
 #SBATCH --mem=128G
-#SBATCH -t 0-24:00:00
+# SBATCH -t 0-24:00:00
 #SBATCH -J Orca_scratchtest
 #SBATCH -o log.%j
 #SBATCH --mail-type=end
@@ -11,22 +11,23 @@
 # USER VARIABLES
 
 # ORCA and xtb module names
-export orca_module_name=ORCA/6.1.0-gompi-2022b
+export orca_module_name=ORCA/orca_6_1_1_linux_x86-64_shared_openmpi418
 # export xtb_module_name=xtb/6.6.0-foss-2020b
 
-# ORCA directory and library path
-export software_dir=/apps/software/2022b/software
-export orcadir=$software_dir/$orca_module_name/bin
-export LD_LIBRARY_PATH=$software_dir/$orca_module_name/lib/:$orcadir
+# ORCA directory and library path; OpenMPI path
+export software_dir=~/installers
+export orcadir=$software_dir/$orca_module_name
+export openmpi_dir=/orcd/software/core/001/spack/pkg/openmpi/4.1.4/zahpnmk/lib
+export LD_LIBRARY_PATH=$software_dir/$orca_module_name/lib/:$orcadir:$openmpi_dir
+
+# Creating local scratch folder for the user on the computing node, if none exists.
+export scratchlocation=/home/$USER/orcd/scratch
 
 # remote shell command for ORCA to use when running in parallel
 export RSH_COMMAND="/usr/bin/ssh -x"
 
 # this is to let ORCA know where the XTB executable is
 # export XTBEXE=$software_dir/$xtb_module_name/bin/xtb
-
-# Creating local scratch folder for the user on the computing node, if none exists.
-export scratchlocation=/nfs/roberts/scratch/pi_sjm76/
 
 # tell Slurm to send the SIGUSR1 signal two minutes before timeout
 #SBATCH --signal=B:SIGUSR1@120
@@ -66,6 +67,8 @@ export job=$1
 module purge
 # module load $xtb_module_name
 module load $orca_module_name
+module --ignore_cache load gcc/12.2.0
+module --ignore_cache load openmpi/4.1.4
 
 if [ ! -d $scratchlocation/$USER ]
 then
@@ -81,6 +84,19 @@ cp  $SLURM_SUBMIT_DIR/*.cmp $tdir/ 2>/dev/null ||:
 cp  $SLURM_SUBMIT_DIR/*.oldgbw $tdir/ 2>/dev/null || :
 cp  $SLURM_SUBMIT_DIR/*.hess $tdir/ 2>/dev/null || :
 cp  $SLURM_SUBMIT_DIR/*.allxyz $tdir/ 2>/dev/null || :
+
+# check if the input file mentions any .gbw wavefunction:
+# if so, copy it over to submit dir.
+GBW_FILES=$(grep -oE '["\x27]?\S+\.gbw["\x27]?' "$SLURM_SUBMIT_DIR/$job.inp" | sed 's/["\x27]//g' | sort -u)
+
+if [[ -n "$GBW_FILES" ]]; then
+  for file in $GBW_FILES; do
+      if [[ -f "$SLURM_SUBMIT_DIR/$file" ]]; then
+          cp "$SLURM_SUBMIT_DIR/$file" "$tdir/"
+          echo "Copied $file to $tdir/"
+      fi
+  done
+fi
 
 # transfers all .xyz files and .allxyz files, except trajectories
 # might be an overkill but it is required for restarting NEBs

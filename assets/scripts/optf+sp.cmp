@@ -2,6 +2,9 @@
 variable method1 = "R2SCAN-3c";
 variable method2 = "wB97M-V def2-TZVPP";
 variable solvent = "acetonitrile";
+variable convergence = "";
+variable ri = "RIJCOSX";
+variable grid = "Defgrid3";
 
 # Declare other variables
 variable method1_EE, method1_G, method1_Gcorr;
@@ -10,7 +13,7 @@ variable method2_EE, method2_compositeG, method2_compositeH;
 
 # Perform opt+freq at method1 level
 New_Step
-  ! &{method1} Opt TightOpt Defgrid3 Freq CPCM(&{solvent})
+  ! &{method1} Opt TightOpt &{grid} Freq CPCM(&{solvent}) &{ri} &{convergence}
 Step_End
 Alias_Step m1
 
@@ -24,7 +27,7 @@ method1_Hcorr = method1_H - method1_EE;
 
 # Perform sp at method2 level
 New_Step
-  ! &{method2} Defgrid3
+  ! &{method2} &{grid} &{convergence} &{ri}
 
   %cpcm smd true
     SMDsolvent "&{solvent}"

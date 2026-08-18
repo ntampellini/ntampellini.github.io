@@ -14,12 +14,12 @@ from prism_pruner.algebra import dihedral
 from rich.traceback import install
 
 from plot_absorption_spectrum import plot_absorption_spectrum
-from utils import read_xyz_energies
+from firecode.utils import read_xyz_energies
 
 install(show_locals=True, locals_max_length=None, locals_max_string=None, width=120)
 
 username = getuser()
-scratchdir = f'/nfs/roberts/scratch/pi_sjm76/{username}'
+scratchdir = f'/home/{username}/orcd/scratch/{username}'
 
 def print_ts_mode_characterization(rootname):
     # if one is a TS mode, characterize it
@@ -231,6 +231,8 @@ def main(loop=False):
         if propname in files:
 
             # GREP ENERGIES
+            energies = []
+
             try:
                 if neb:
                     mepname = f"{rootname}_MEP_trj.xyz"
@@ -279,7 +281,8 @@ def main(loop=False):
                     print(f'FINAL FREE ENERGY    {float(g.split()[3])} Eh')
 
                 if scan:
-                    last_geom = getoutput(f"grep \"Storing optimized geometry in\" {rootname}.out | tail -1 | grep \"[0-9]\\+\" -1 -o").split("\n")[-1] or 0
+                    last_geom = getoutput(f"grep \"Storing optimized geometry in\" {rootname}.out " +
+                                          "| tail -1 | grep \"[0-9]\\+\" -1 -o").split("\n")[-1] or 0
                     
                     try:
                         total = getoutput(f"grep \"B [0-9]\\+ [0-9]\\+\" {rootname}.out").split()[-1]
@@ -290,8 +293,12 @@ def main(loop=False):
 
                 if neb:
 
-                    neb_table = getoutput(f"grep \"Starting iterations:\" {rootname}.out -A 500 ")
-                    highest_energies = [float(line.split()[3]) * EH_TO_KCAL for line in neb_table.split("\n") if is_nonempty(line) and line.split()[0] == "LBFGS"]
+                    neb_table = getoutput(
+                        f"grep \"Starting iterations:\" {rootname}.out -A 500 "
+                        ).split("*********************H U R R A Y*********************")[0]
+                    
+                    highest_energies = [float(line.split()[3]) * EH_TO_KCAL for line in neb_table.split("\n")
+                                        if is_nonempty(line) and line.split()[0] == "LBFGS"]
                     
                     plt.cld()
                     plt.plot(highest_energies, color=215)
@@ -303,14 +310,21 @@ def main(loop=False):
                     print(f"Energy span in {rootname}_MEP_trj.xyz is {(np.max(energies)-np.min(energies)):.2f} kcal/mol")
 
                 else:
-                    homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
-                    lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
+                    homo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | " +
+                                     "grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
+                    lumo = getoutput(f"egrep \"^ *[0-9]* +2.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out -A 1 | tail -1 | " +
+                                     "grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
                     
-                    # if homo == "" and lumo == "":
-                    #     homo = getoutput(f"egrep \"^ *[0-9]* +1.0000 +-[0-9].[0-9]* +[-]*[0-9]*.[0-9]*\" {rootname}.out | tail -1 | grep -o \"\\-*[0-9]\\+.[0-9]\\+\" | tail -1")
-                
+                    if homo != "" and lumo != "":
+                        gap = float(lumo) - float(homo)
+                        gap_nm = 1241 / gap
+                    else:
+                        gap = 0.0
+                        gap_nm = 0.0
+                                  
                     print(f"\nHOMO: {homo} eV")
                     print(f"LUMO: {lumo} eV")
+                    print(f"Gap : {gap:.4f} eV ({gap_nm:.1f} nm)")
                     print("\n"+"_"*100+"\n")
 
                 os.system(f"grep \"TOTAL RUN TIME\" {rootname}.out | tail -1")
@@ -375,17 +389,24 @@ def main(loop=False):
             plt.show()
             print("\n"+"_"*100+"\n")
 
-    filename = rootname + ".allxyz"
+    # convert all .allxyz files
+    for file in os.listdir():
+        if file.endswith(".allxyz"):
+            with open(file, "r") as f:
+                lines = f.readlines()
+
+            lines = [line.replace(">", "") for line in lines]
+
+            file = file.replace(".allxyz", ".all.xyz", 1)
+
+            with open(file, "w") as f:
+                lines = f.writelines(lines)
+
+            print(f"--> Converted {file.split(".")[0]}.allxyz to {file}")
+
+
+    filename = rootname + ".all.xyz"
     if filename in files:
-
-        with open(filename, "r") as f:
-            lines = f.readlines()
-
-        lines = [line.replace(">", "") for line in lines]
-
-        filename = rootname + ".all.xyz"
-        with open(filename, "w") as f:
-            lines = f.writelines(lines)
 
         mol = read_xyz(filename)
         energies = read_xyz_energies(filename, verbose=False)
@@ -407,8 +428,9 @@ def main(loop=False):
         # else:
         #     s = f"Maximum Energy, {round(energies[maximum_id]*EH_TO_KCAL, 2)} kcal/mol above minimum"
 
-        print(f"Energy span in {filename} is {round((np.max(energies)-np.min(energies))*EH_TO_KCAL, 2)} kcal/mol")
-        print("\n")
+        if energies is not None:
+            print(f"Energy span in {filename} is {round((np.max(energies)-np.min(energies))*EH_TO_KCAL, 2)} kcal/mol")
+            print("\n")
 
     # else:
     #     lines = getoutput(f'grep \"Total DFT Energy\" {rootname}.property.txt')

@@ -113,7 +113,9 @@ def plot_absorption_spectrum(outname, fwhm=10,
     names, wavelengths, oscillator_strengths = parse_orca_spectrum(outname)
     _, _, oscillator_strengths_velocities = parse_orca_spectrum(outname, grep_velocity=True)
     
-    wl_range = (min(wavelengths)-20, max(wavelengths)+20)
+    min_wl = max(min(wavelengths)-20, 180)
+    max_wl = min(max(wavelengths)+20, 700)
+    wl_range = (min_wl, max_wl)
 
     # Create broadened spectrum
     wl_axis, spectrum = broaden_spectrum(wavelengths, oscillator_strengths, 

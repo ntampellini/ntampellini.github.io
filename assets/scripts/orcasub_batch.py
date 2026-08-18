@@ -1,3 +1,16 @@
+partitions = {
+    # 'day': ('day   - Max. duration 24 h', '0-24:00:00'),
+    # 'week': ('week  - Max. duration 7 d', '7-00:00:00'),
+    "mit_normal":      ("mit_normal      - max 12 h", '0-12:00:00'),
+    "mit_normal_gpu":  ("mit_normal_gpu  - max  6 h", '0-6:00:00'),
+    "mit_quicktest":   ("mit_quicktest   - max 15 m", '0-00:15:00'),
+    "mit_preemptable": ("mit_preemptable - max 48 h (could be interrupted!)", '2-00),:00:00'),
+}
+
+default_partition = "mit_normal"
+
+#####################
+
 import sys
 import os
 from InquirerPy import inquirer
@@ -34,11 +47,10 @@ def main(rootnames, priority=False):
 
     partition = inquirer.select(
         message="Which partition would you like to run the jobs on?",
-        choices=(
-            Choice(value='day', name= 'day   - Max. duration 24 h'),
-            Choice(value='week', name='week  - Max. duration 7 d'),
-        ),
-        default='day',
+        choices=[
+            Choice(value=key, name=value[0]) for key, value in partitions.items()
+        ],
+        default=default_partition,
     ).execute()
 
     safety_factor = inquirer.text(
@@ -49,10 +61,7 @@ def main(rootnames, priority=False):
         invalid_message='Minimum safety factor is 1.25'
     ).execute()
 
-    maxtime_string = {
-        'day' : '0-24:00:00',
-        'week': '7-00:00:00',
-    }[partition]
+    maxtime_string = partitions[partition][1]
 
     done = []
     for name in rootnames:
@@ -66,7 +75,7 @@ def main(rootnames, priority=False):
             if basename+".inp" in os.listdir():
                 # and basename+'.xyz' in os.listdir():
 
-                os.system((f'sbatch -J 🐋⁶_ORCA_{os.path.basename(os.getcwd())}/{basename} --tasks-per-node {procs} ' + 
+                os.system((f'sbatch -J ORCA_{os.path.basename(os.getcwd())}/{basename} --tasks-per-node {procs} ' + 
                           f'--mem {int(procs*mem)} --partition {partition} -t {maxtime_string} orcasub_scratch.sh {basename}{priority_string}'))
                 print(f'Launched ORCA_{os.path.basename(os.getcwd())}/{basename} on {procs} cores / {float(procs*mem/1000):.2f} GB ({float(mem/1000):.2f} GB/core) on {partition}')
                 done.append(basename)

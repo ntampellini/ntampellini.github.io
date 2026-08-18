@@ -49,7 +49,7 @@ class Structure:
         n_atoms = int(getoutput(f'head {self.basename}.xyz -n 1'))
         n_freqs = 3 * n_atoms
 
-        lines = getoutput(f'grep \" \+[0-9]\+: \+-*[0-9]\+\.[0-9]\+ cm\*\*-1\" {self.basename}.out').split('\n')
+        lines = getoutput(f'grep \" \\+[0-9]\\+: \\+-*[0-9]\\+\\.[0-9]\\+ cm\\*\\*-1\" {self.basename}.out').split('\n')
         freqs = [float(line.split()[1]) for line in lines]
         
         # if more than one set, only keep the last
@@ -79,8 +79,8 @@ def update(name, prev_to_last=False):
             if outname in files:
                 try:
                     title = Structure(basename).data
-                except Exception as e:
-                    print(e)
+                except Exception as err:
+                    print(f"--> {name} - ERR: {err}")
                     title = ""
                     pass
             else:
@@ -89,7 +89,7 @@ def update(name, prev_to_last=False):
             with open(xyzname, "w") as f:
                 write_xyz(mol.atoms, mol.coords[-1], f, title=title)
 
-            print(f"Updated {xyzname}")
+            print(f"✓  Updated {xyzname} from {traj}")
             
             done.append(name.split(".")[0])
             return True
@@ -117,12 +117,12 @@ def update(name, prev_to_last=False):
                     with open(xyzname, "w") as f:
                         write_xyz(mol.atoms, mol.coords[-1], f, title=title)
 
-                    print(f"Updated {xyzname} from {cmptraj}")
+                    print(f"✓  Updated {xyzname} from {cmptraj}")
                     
                     done.append(basename)
                     return True
 
-            print(f"Can't find {traj} nor {cmptraj}")
+            print(f"✗  Skipped {xyzname} - Can't find {traj} nor {cmptraj}")
             return False
 
 if __name__ == "__main__":
